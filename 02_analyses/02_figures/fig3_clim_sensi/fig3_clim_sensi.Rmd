@@ -1,0 +1,306 @@
+---
+title: "Quantify the effect of species minimum temperature and aridity on species climatic sensitivity"
+output: github_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{=html}
+<style type="text/css">
+pre {
+  font-size: 10px
+}
+</style>
+```
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = T, message = F, warning = F)
+
+library(tidyverse)
+library(lme4)
+library(here)
+library(testthat)
+library(fs)
+library(DHARMa)
+library(patchwork)
+# https://strengejacke.github.io/ggeffects/articles/introduction_randomeffects.html
+library(ggeffects)
+
+```
+
+```{r read}
+
+data_model <- readRDS(file = here("02-data", "models", "data_model.rds"))
+
+read_data <- function(data_dir){
+  fs::dir_ls(data_dir, regexp = "\\.rds$") |>
+    purrr::map(read_rds)
+}
+
+all_files <- read_data(data_dir = here("02-data", "models", "predictions"))
+
+all_files_dir <- dir_ls(here("02-data", "models", "predictions"), regexp = "\\.rds$")
+
+all_files_dir_names <- map(all_files_dir, ~str_extract(.x, "[^/]*$")) |> 
+  map(~str_replace(.x, "_", " ")) |> 
+  map(~str_extract(.x,  "[^_]+")) |>
+  unname()
+
+names(all_files) <- all_files_dir_names
+
+```
+
+```{r intersp}
+
+mutate_name <- function(x, names_sp){
+  all_files[[x]] |> 
+    dplyr::mutate(
+      species.cor = names_sp
+    )
+}
+
+arg2_x_names_sp <- list(x = 1:length(all_files), names_sp = names(all_files))
+
+all_files_tb <- arg2_x_names_sp |> 
+  pmap_df(mutate_name)
+
+predictions_all_changes <- all_files_tb
+
+names(predictions_all_changes)
+
+names(data_model)
+
+data_model_s <- data_model |> 
+  select(
+    tmt.plot.id,
+    country, plot.area,
+    species.cor, 
+    bio11.mean, aridity.mean
+  )
+
+predictions_species <- left_join(predictions_all_changes, data_model_s, by = c("tmt.plot.id", "species.cor"))
+
+test_that("for dev and species traits
+          are joined correctly", {
+  expect_equal(
+    nrow(predictions_species |> 
+  distinct(species.cor,
+    bio11.mean, aridity.mean)),
+    length(unique(data_model$species.cor))
+    )
+})
+
+names(predictions_species)
+
+predictions_species_climsen <- predictions_species |>
+  mutate(
+    high_climsen = ((predFE_high_cold_wet - n.plot0) / census.interval / plot.area) - ((predFE_high_warm_arid - n.plot0) / census.interval / plot.area)
+  )
+
+```
+
+```{r models}
+
+# response variable distributions
+hist(predictions_species_climsen$high_climsen, breaks = 100)
+summary(predictions_species_climsen$high_climsen)
+
+names(predictions_species_climsen)
+
+summary(predictions_species_climsen$bio11.mean)
+summary(predictions_species_climsen$aridity.mean)
+
+predictions_species_climsen_mod <- predictions_species_climsen |> 
+  rename(
+    bio11.mean.sp = bio11.mean,
+    aridity.mean.sp = aridity.mean
+  ) |> 
+  dplyr::select(
+    species.cor, tmt.plot.id, 
+    census.interval, plot.area,
+    high_climsen,
+    bio11.mean.sp, aridity.mean.sp
+  )
+
+# standardisation
+predictions_climsen_sd <- predictions_species_climsen_mod |> 
+  mutate(
+    bio11.mean.sp.nsd = bio11.mean.sp,
+    aridity.mean.sp.nsd = aridity.mean.sp,
+    across(c(bio11.mean.sp, aridity.mean.sp),
+           ~as.numeric(scale(.x, center = TRUE, scale = TRUE)))
+  )
+
+summary(predictions_climsen_sd$bio11.mean.sp)
+summary(predictions_climsen_sd$aridity.mean.sp)
+summary(predictions_climsen_sd$high_climsen)
+
+mod <- lmer(
+  high_climsen ~ (1|tmt.plot.id) +
+    (1|species.cor) +
+    bio11.mean.sp + aridity.mean.sp,
+  data = as.data.frame(predictions_climsen_sd)
+)
+
+summary(mod)
+
+simres <- simulateResiduals(mod)
+x11()
+par(mfrow = c(2, 2))
+plot(simres)
+
+# performance::check_predictions(mod)
+
+
+# lmer robustness diagnostic
+# a lm model calculating the mean change per species
+
+predictions_species_climsen_lm <- predictions_species_climsen_mod |> 
+  group_by(species.cor) |> 
+  summarise(
+    high_climsen_sp = mean(high_climsen, na.rm = T),
+    bio11.mean.sp = mean(bio11.mean.sp, na.rm = T),
+    aridity.mean.sp = mean(aridity.mean.sp, na.rm = T)
+  )
+
+# standardisation
+predictions_climsen_lm_sd <- predictions_species_climsen_lm |> 
+  mutate(
+    bio11.mean.sp.nsd = bio11.mean.sp,
+    aridity.mean.sp.nsd = aridity.mean.sp,
+    across(c(bio11.mean.sp, aridity.mean.sp),
+           ~as.numeric(scale(.x, center = TRUE, scale = TRUE)))
+  )
+
+mod_lm <- lm(
+  high_climsen_sp ~ bio11.mean.sp + aridity.mean.sp,
+  data = as.data.frame(predictions_climsen_lm_sd)
+)
+
+summary(mod_lm)
+
+```
+
+```{r scatterplots}
+
+predict_ggeffects <- function(m, var){
+  ggpredict(model = m, 
+            terms = var,
+            type = "fixed",
+            ci.lvl = 0.68)
+}
+
+var_v <- c(
+  "bio11.mean.sp",
+  "aridity.mean.sp"
+)
+
+predictions_lmer <- map(var_v, \(x) predict_ggeffects(m = mod, var = x))
+
+predictions_lm <- map(var_v, \(x) predict_ggeffects(m = mod_lm, var = x))
+
+plot_ggeffects <- function(pred, xlab){
+  plot(
+    pred, add.data = T, dot.size = .1,
+    alpha = .15, dot.alpha = .03
+    ) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "grey20") +
+    labs(
+      y = expression(atop("Climatic sensitivity (Cold & wet - Warm & arid)", "Annual change n. stems per hectare")),
+      x = xlab,
+      ) +
+    coord_cartesian(
+      ylim = c(-2.5, 2.5),
+      ) +
+    theme(
+      panel.grid.major = element_line(colour = "grey90", size = 0.5),
+      panel.background = element_blank(),
+      axis.text = element_text(size = 10, colour = "black"),
+      axis.title = element_text(size = 10, colour = "black"),
+      legend.position = "none"
+    ) +
+  ggtitle("")
+}
+
+xlab_v <- c(
+  "Minimum temperature niche position",
+  "Aridity niche position"
+)
+
+arg2_pred_xlab_v_lmer <- list(
+  pred = predictions_lmer,
+  xlab = xlab_v
+  )
+
+arg2_pred_xlab_v_lm <- list(
+  pred = predictions_lm,
+  xlab = xlab_v
+  )
+
+all_plot_ggeffects_lmer <- arg2_pred_xlab_v_lmer |> 
+  pmap(plot_ggeffects)
+
+all_plot_ggeffects_lm <- arg2_pred_xlab_v_lm |> 
+  pmap(plot_ggeffects)
+
+# reverse transformation
+# https://ourcodingclub.github.io/tutorials/data-scaling/
+# lmer
+scaled_rev_bio11_lmer <- predictions_lmer[[1]][["x"]] * sd(predictions_climsen_sd$bio11.mean.sp.nsd) +
+  mean(predictions_climsen_sd$bio11.mean.sp.nsd)
+
+scaled_rev_aridity_lmer <- predictions_lmer[[2]][["x"]] * sd(predictions_climsen_sd$aridity.mean.sp.nsd) +
+  mean(predictions_climsen_sd$aridity.mean.sp.nsd)
+
+all_plot_ggeffects_lmer <- all_plot_ggeffects_lmer[[1]] + 
+  scale_x_continuous(
+    breaks = all_plot_ggeffects_lmer[[1]]$data$x[c(1, 3, 5, 7, 9)],
+    labels = round(scaled_rev_bio11_lmer[c(1, 3, 5, 7, 9)], 1)
+    ) +
+  all_plot_ggeffects_lmer[[2]] + 
+  scale_x_continuous(
+    breaks = all_plot_ggeffects_lmer[[2]]$data$x[c(1, 3, 5, 7, 9, 11)],
+    labels = round(scaled_rev_aridity_lmer[c(1, 3, 5, 7, 9, 11)], 1)
+    ) +
+  plot_annotation(tag_levels = "A", tag_prefix = "(", tag_suffix = ")") +
+  plot_layout(ncol = 2)
+
+all_plot_ggeffects_lmer
+  
+ggsave(
+  plot = all_plot_ggeffects_lmer,
+  here("04-results", "figures", "fig3", "fig3_main.png"),
+  width = 9, height = 4,
+  dpi = 600
+)
+
+# lm
+scaled_rev_bio11_lm <- predictions_lm[[1]][["x"]] * sd(predictions_climsen_lm_sd$bio11.mean.sp.nsd) +
+  mean(predictions_climsen_lm_sd$bio11.mean.sp.nsd)
+
+scaled_rev_aridity_lm <- predictions_lm[[2]][["x"]] * sd(predictions_climsen_lm_sd$aridity.mean.sp.nsd) +
+  mean(predictions_climsen_lm_sd$aridity.mean.sp.nsd)
+
+all_plot_ggeffects_lm <- all_plot_ggeffects_lm[[1]] + 
+  scale_x_continuous(
+    breaks = all_plot_ggeffects_lm[[1]]$data$x[c(1, 3, 5, 7, 9)],
+    labels = round(scaled_rev_bio11_lm[c(1, 3, 5, 7, 9)], 1)
+    ) +
+  all_plot_ggeffects_lm[[2]] + 
+  scale_x_continuous(
+    breaks = all_plot_ggeffects_lm[[2]]$data$x[c(1, 3, 5, 7, 9)],
+    labels = round(scaled_rev_aridity_lm[c(1, 3, 5, 7, 9)], 1)
+    ) +
+  plot_annotation(tag_levels = "A", tag_prefix = "(", tag_suffix = ")") +
+  plot_layout(ncol = 2)
+
+all_plot_ggeffects_lm
+  
+ggsave(
+  plot = all_plot_ggeffects_lm,
+  here("04-results", "figures", "fig3", "fig3_main_lm.png"),
+  width = 10, height = 5,
+  dpi = 600
+)
+
+```

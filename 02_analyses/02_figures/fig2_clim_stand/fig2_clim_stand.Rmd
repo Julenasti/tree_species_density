@@ -1,0 +1,790 @@
+---
+title: "Quantify species abundance shifts adjusting for stand development"
+output: github_document
+editor_options: 
+  chunk_output_type: console
+---
+
+<style type="text/css">
+pre {
+  font-size: 10px
+}
+</style>
+
+```{r setup, include = F}
+knitr::opts_chunk$set(eval = T, echo = TRUE, message = F, warning = F, out.width = "100%")
+
+library(here)
+library(tidyverse)
+library(patchwork)
+library(ggdist)
+library(testthat)
+library(fs)
+library(gt)
+library(magick)
+
+```
+
+```{r read}
+
+data_model <- readRDS(file = here("02-data", "models", "data_model.rds"))
+
+read_data <- function(data_dir){
+  fs::dir_ls(data_dir, regexp = "\\.rds$") |>
+    purrr::map(read_rds)
+}
+
+all_files <- read_data(data_dir = here("02-data", "models", "predictions"))
+
+all_files_dir <- dir_ls(here("02-data", "models", "predictions"), regexp = "\\.rds$")
+
+all_files_dir_names <- map(all_files_dir, ~str_extract(.x, "[^/]*$")) |> 
+  map(~str_replace(.x, "_", " ")) |> 
+  map(~str_extract(.x,  "[^_]+")) |>
+  unname()
+
+names(all_files) <- all_files_dir_names
+
+data_eu <- readRDS(file = here("02-data", "processed", "eu_sp_data.rds"))
+
+unique(data_eu$species.cor)
+
+```
+
+```{r all_sp}
+
+mutate_name <- function(x, names_sp){
+  all_files[[x]] |> 
+    dplyr::mutate(
+      species.cor = names_sp
+    )
+}
+
+arg2_x_names_sp <- list(x = 1:length(all_files), names_sp = names(all_files))
+
+all_files_tb <- arg2_x_names_sp |> 
+  pmap_df(mutate_name)
+
+map(all_files_tb, \(x) sum(is.na(x)))
+
+predictions_all_changes <- all_files_tb
+
+names(data_model)
+
+data_model_s <- data_model |> 
+  select(
+    tmt.plot.id,
+    plot.area,
+    species.cor
+  )
+
+predictions_all_changes <- left_join(predictions_all_changes, data_model_s, by = c("tmt.plot.id", "species.cor"))
+
+names(predictions_all_changes)
+
+predictions_all_changes <- predictions_all_changes |> 
+  mutate(
+    predFE_observed_cold_wet = (predFE_observed_cold_wet - n.plot0) / census.interval / plot.area,
+    predFE_observed_core = (predFE_observed_core - n.plot0) / census.interval / plot.area,
+    predFE_observed_warm_arid = (predFE_observed_warm_arid - n.plot0) / census.interval / plot.area,
+    predFE_low_cold_wet = (predFE_low_cold_wet - n.plot0) / census.interval / plot.area,
+    predFE_low_core = (predFE_low_core - n.plot0) / census.interval / plot.area,
+    predFE_low_warm_arid = (predFE_low_warm_arid - n.plot0) / census.interval / plot.area,
+    predFE_high_cold_wet = (predFE_high_cold_wet - n.plot0) / census.interval / plot.area,
+    predFE_high_core = (predFE_high_core - n.plot0) / census.interval / plot.area,
+    predFE_high_warm_arid = (predFE_high_warm_arid - n.plot0) / census.interval / plot.area,
+  )
+
+pred_all_changes_l <- predictions_all_changes |>
+  pivot_longer(
+    cols = c(
+      predFE_observed_cold_wet,
+      predFE_observed_warm_arid, predFE_observed_core,
+      predFE_low_cold_wet,
+      predFE_low_warm_arid, predFE_low_core,
+      predFE_high_cold_wet,
+      predFE_high_warm_arid, predFE_high_core
+      ),
+    names_to = "name_predFE_fd",
+    values_to = "val_predFE_fd"
+    )
+
+pred_changes_l_rel <- pred_all_changes_l |>
+  mutate(
+    name_predFE_fd = fct_relevel(
+    name_predFE_fd, 
+    "predFE_observed_cold_wet",
+    "predFE_observed_core", "predFE_observed_warm_arid",
+    "predFE_low_cold_wet",
+    "predFE_low_core", "predFE_low_warm_arid",
+    "predFE_high_cold_wet", "predFE_high_core",
+    "predFE_high_warm_arid"
+    ),
+    for_dev = case_when(
+      (name_predFE_fd == "predFE_observed_cold_wet" | 
+        name_predFE_fd == "predFE_observed_core" |
+        name_predFE_fd == "predFE_observed_warm_arid") ~ "Actual stand development",
+      (name_predFE_fd == "predFE_low_cold_wet" | 
+        name_predFE_fd == "predFE_low_core" |
+        name_predFE_fd == "predFE_low_warm_arid") ~ "Early stand development",
+        T ~ "Late stand development"
+    ),
+    name_predFE_fd = recode_factor(
+      name_predFE_fd,
+      "predFE_observed_cold_wet" = "Cold & wet",
+      "predFE_observed_core" = "Median climate",
+      "predFE_observed_warm_arid" = "Warm & arid",
+      "predFE_low_cold_wet" = "Cold & wet",
+      "predFE_low_core" = "Median climate",
+      "predFE_low_warm_arid" = "Warm & arid",
+      "predFE_high_cold_wet" = "Cold & wet",
+      "predFE_high_core" = "Median climate",
+      "predFE_high_warm_arid" = "Warm & arid"
+      )
+  )
+
+kk <- pred_changes_l_rel |> 
+  filter(species.cor == "Fagus sylvatica")
+
+pred_changes_l_rel_eu <- pred_changes_l_rel |> 
+  filter(species.cor %in% unique(data_eu$species.cor))
+
+pred_changes_l_rel_us <- pred_changes_l_rel |> 
+  filter(!species.cor %in% unique(data_eu$species.cor))
+
+gg_slab_sp_clim <- function(dat){
+  ggplot(dat, aes(y = fct_rev(species.cor), x = val_predFE_fd,
+                  fill = factor(name_predFE_fd,
+                                levels = rev(c("Cold & wet",
+                                               "Median climate",
+                                               "Warm & arid"))),
+                  color = factor(name_predFE_fd,
+                                 levels = rev(c("Cold & wet",
+                                                "Median climate",
+                                                "Warm & arid"))))
+  ) +
+    stat_pointinterval(
+      point_interval = mean_qi, .width = .5,
+      position = position_dodge(width = .7), alpha = .9,
+      ) +
+    facet_wrap(~factor(for_dev, levels = c("Actual stand development", "Early stand development", "Late stand development"))) +
+    geom_vline(xintercept = 0, linetype = "dashed") +
+    labs(x = "Annual change n. stems per hectare", y = "") +
+    scale_fill_manual(values = rev(c("lightskyblue", "gray7", "firebrick3")),
+                      name = "",
+                      guide = guide_legend(reverse = T)) +
+    scale_color_manual(values = rev(c("lightskyblue", "gray7", "firebrick3")),
+                       name = "", 
+                       guide = guide_legend(reverse = T)) +
+    theme(
+      legend.position = "top",
+      plot.title = element_text(color = "black", size = 10),
+      plot.subtitle = element_text(color = "black", size = 8),
+      panel.grid.major = element_blank(),
+      panel.background = element_blank(),
+      axis.title.y = element_blank(),
+      legend.key = element_blank(),
+      legend.text = element_text(color = "black", size = 9),
+      axis.title.x = element_text(color = "black", size = 9),
+      axis.text.x = element_text(color = "black", size = 9),
+      axis.text.y = element_text(color = "black", size = 9,
+                                 face = "italic")
+      )
+}
+
+fig2_intrasp_eu_clim <- gg_slab_sp_clim(pred_changes_l_rel_eu)
+
+ggsave(
+  plot = fig2_intrasp_eu_clim,
+  here("04-results", "figures", "fig2", "fig2_intrasp_eu.png"),
+  width = 8, height = 8,
+  dpi = 600
+)
+
+length(unique(pred_changes_l_rel_us$species.cor)) / 3
+
+sp_1_18 <- unique(pred_changes_l_rel_us$species.cor)[1:18]
+
+sp_19_36 <- unique(pred_changes_l_rel_us$species.cor)[19:36]
+
+sp_37_55 <- unique(pred_changes_l_rel_us$species.cor)[37:55]
+
+pred_us_sp_1_18 <- pred_changes_l_rel_us |> 
+  filter(species.cor %in% sp_1_18)
+
+pred_us_sp_19_36 <- pred_changes_l_rel_us |> 
+  filter(species.cor %in% sp_19_36)
+
+pred_us_sp_37_55 <- pred_changes_l_rel_us |> 
+  filter(species.cor %in% sp_37_55)
+
+pred_us_all <- list(
+  pred_us_sp_1_18,
+  pred_us_sp_19_36,
+  pred_us_sp_37_55
+)
+
+gg_pred_us_all <- map(pred_us_all, \(x) gg_slab_sp_clim(x))
+
+gg_pred_us_all
+
+v_pred_us_all <- c(
+  "pred_us_sp_1_18.png",
+  "pred_us_sp_19_36.png",
+  "pred_us_sp_37_55.png"
+)
+
+walk2(gg_pred_us_all, v_pred_us_all, \(x, y) ggsave(
+  plot = x,
+  filename = here("04-results", "figures", "fig2", y),
+  width = 8, height = 8,
+  dpi = 600
+  ))
+
+```
+
+```{r main_plot}
+
+# species
+pred_changes_l_rel_sp <- pred_changes_l_rel |> 
+  filter(
+    species.cor == "Acer rubrum" |
+    species.cor == "Abies concolor" |
+    species.cor == "Pinus ponderosa" |
+    species.cor == "Populus tremuloides" |
+    species.cor == "Pinus echinata" |
+    species.cor == "Pinus sylvestris" |
+    species.cor == "Picea abies" |
+    species.cor == "Fagus sylvatica" |
+    species.cor == "Quercus robur" |
+    species.cor == "Quercus ilex"
+    )
+
+# equal weights for each species
+predictions_all_changes_w <- predictions_all_changes |> 
+  mutate(
+    predFE_observed_climsen = ((predFE_observed_cold_wet - n.plot0) / census.interval / plot.area) - ((predFE_observed_warm_arid - n.plot0) / census.interval / plot.area),
+    predFE_low_climsen = ((predFE_low_cold_wet - n.plot0) / census.interval / plot.area) - ((predFE_low_warm_arid - n.plot0) / census.interval / plot.area),
+    predFE_high_climsen = ((predFE_high_cold_wet - n.plot0) / census.interval / plot.area) - ((predFE_high_warm_arid - n.plot0) / census.interval / plot.area)
+  ) |> 
+  group_by(species.cor) |> 
+  summarise(
+    # actual
+    predFE_observed_climsen_sp = mean(predFE_observed_climsen),
+    # low
+    predFE_low_climsen_sp = mean(predFE_low_climsen),
+    # high
+    predFE_high_climsen_sp = mean(predFE_high_climsen)
+  )
+
+pred_all_changes_w_l <- predictions_all_changes_w |>
+  pivot_longer(
+    cols = c(
+      predFE_observed_climsen_sp,
+      predFE_low_climsen_sp,
+      predFE_high_climsen_sp
+      ),
+    names_to = "name_diff_fd",
+    values_to = "val_diff_fd"
+    ) |> 
+  group_by(name_diff_fd) |> 
+  mutate(
+    predFE_mean_all = mean(val_diff_fd, na.rm = T)
+  )
+
+mean(predictions_all_changes_w$predFE_observed_climsen_sp)
+mean(predictions_all_changes_w$predFE_low_climsen_sp)
+mean(predictions_all_changes_w$predFE_high_climsen_sp)
+
+pred_all_changes_w_l_rel <- pred_all_changes_w_l |>
+  mutate(
+    name_diff_fd = case_when(
+      name_diff_fd == "predFE_observed_climsen_sp" ~ "Actual stand development",
+      name_diff_fd == "predFE_low_climsen_sp" ~ "Early stand development",
+      T ~ "Late stand development"
+    ),
+    name_diff_fd = as.factor(name_diff_fd),
+    name_diff_fd = fct_relevel(
+    name_diff_fd,
+    "Actual stand development",
+    "Early stand development",
+    "Late stand development"
+    )
+  )
+
+levels(pred_all_changes_w_l_rel$name_diff_fd)
+
+df_text_mean <- pred_all_changes_w_l_rel |> 
+  group_by(name_diff_fd) |> 
+  summarise(
+    predFE_mean_all = round(mean(val_diff_fd, na.rm = T), 1),
+    predFE_sd_all = round(sd(val_diff_fd, na.rm = T), 1),
+    predFE_se_all = round(sd(val_diff_fd, na.rm = T) / sqrt(length(unique(species.cor))), 1),
+  ) |> 
+  mutate(
+    x = 22,
+    y = 15
+  )
+
+test_that("SE is OK", {
+  expect_equal(
+    round(sd(pred_all_changes_w_l_rel$val_diff_fd[pred_all_changes_w_l_rel$name_diff_fd == "Early stand development"]) / sqrt(73), 1),
+    df_text_mean$predFE_se_all[df_text_mean$name_diff_fd == "Early stand development"]
+  )
+})
+
+gg_sensitivity_hist <- function(df, text_mean) {
+ ggplot(df, 
+         aes(x = val_diff_fd, fill = ..x..)) +
+    geom_histogram(
+      binwidth = 2.25, colour = "grey50", size = .25
+    ) +
+    geom_vline(aes(xintercept = 0),
+               linetype = "dashed",
+               colour = "black", size = .5) +
+    facet_wrap(name_diff_fd ~ .) +
+    labs(y = "N. species", x = "") +
+    scale_fill_gradient2(
+      mid = "white",
+      midpoint = 0,
+      low = scales::muted("#B2182B"),
+      high = scales::muted("#2166AC"),
+      name = expression(atop("Climatic sensitivity (Cold & wet - Warm & arid)", "Annual change n. stems per hectare"))
+    ) +
+    theme(
+      legend.position = "bottom",
+      strip.background = element_blank(),
+      strip.text =  element_blank(),
+      plot.margin = margin(0, 0, 0, 0),
+      axis.title = element_text(colour = "black", size = 10),
+      axis.text = element_text(size = 10, colour = "black"),
+      legend.text = element_text(size = 10),
+      legend.title = element_text(size = 10),
+      panel.grid.major = element_line(colour = "grey90", size = 0.5),
+      axis.line = element_blank(),
+      legend.key = element_blank(),
+      panel.background = element_blank(),
+      panel.spacing = unit(0, "lines")
+    ) +
+    geom_text(data = text_mean, 
+              aes(label = paste(predFE_mean_all, "\ub1", predFE_se_all), x = x, y = y), 
+              size = 3.5,
+              color = "grey40")
+}
+
+fig2_hist <- gg_sensitivity_hist(
+  df = pred_all_changes_w_l_rel,
+  text_mean = df_text_mean
+) +
+  theme(
+    legend.margin = margin(0, 0, 0, 0),
+    legend.box.margin = margin(-10, -10, 0, -10),
+    panel.spacing = unit(.7, "lines")
+  ) +
+  labs(tag = "(B)")
+
+ggsave(
+  plot = fig2_hist,
+  here("04-results", "figures", "fig2", "fig2_hist.png"),
+  width = 8, height = 2.1,
+  dpi = 600
+)
+
+fig2_slab <- (gg_slab_sp_clim(dat = pred_changes_l_rel_sp) +
+                theme(plot.margin = margin(0, 2, 0, 0, "cm"),
+                      legend.text = element_text(color = "black", size = 10),
+                      strip.text = element_text(color = "black", size = 10),
+                      axis.title.x = element_text(color = "black", size = 10),
+                      axis.text.x = element_text(color = "black", size = 10),
+                      axis.text.y = element_text(color = "black", size = 10,
+                                                 face = "italic")) + labs(tag = "(A)")) /
+  plot_spacer() +
+  plot_layout(heights = c(4, 2))
+
+ggsave(
+  plot = fig2_slab,
+  here("04-results", "figures", "fig2", "fig2_slab.png"),
+  width = 10, height = 8.2,
+  dpi = 600
+)
+
+fig2_hist_m <- image_read(here("04-results", "figures", "fig2", "fig2_hist.png"))
+
+fig2_slab_m <- image_read(here("04-results", "figures", "fig2", "fig2_slab.png"))
+
+fig2_main_m <- image_composite(
+  fig2_slab_m, fig2_hist_m,
+  offset = "+830+3650"
+  )
+
+fig2_main_m
+
+image_write(fig2_main_m, here(
+  "04-results", "figures", "fig2", "fig2_main.png"
+), density = 600)
+
+```
+
+```{r quantify_changes}
+
+names(predictions_all_changes)
+
+table(predictions_all_changes$species.cor)
+
+# test
+kk <- tibble(
+  x = runif(100),
+  y = runif(100),
+  z = x - y,
+  xy_mean = mean(x) - mean(y),
+  z_mean = mean(z)
+)
+
+# magnitude
+# climatic effect 
+get_observed_climsen <- function(dat){
+  mean((dat$predFE_observed_cold_wet - dat$n.plot0) / dat$census.interval / dat$plot.area) -
+  mean((dat$predFE_observed_warm_arid - dat$n.plot0) / dat$census.interval / dat$plot.area)
+}
+get_low_climsen <- function(dat){
+  mean((dat$predFE_low_cold_wet - dat$n.plot0) / dat$census.interval / dat$plot.area) -
+  mean((dat$predFE_low_warm_arid - dat$n.plot0) / dat$census.interval / dat$plot.area)
+}
+get_high_climsen <- function(dat){
+  mean((dat$predFE_high_cold_wet - dat$n.plot0) / dat$census.interval / dat$plot.area) -
+  mean((dat$predFE_high_warm_arid - dat$n.plot0) / dat$census.interval / dat$plot.area)
+}
+
+clim_stand_sen <- predictions_all_changes |>  
+  group_by(species.cor) |> 
+  nest() |> 
+  mutate(
+    observed_climsen = map_dbl(data, ~get_observed_climsen(dat = .x)),
+    low_climsen = map_dbl(data, ~get_low_climsen(dat = .x)),
+    high_climsen = map_dbl(data, ~get_high_climsen(dat = .x))
+  )
+
+names(clim_stand_sen)
+
+clim_stand_sen_s <- clim_stand_sen |> 
+  select(!data)
+
+sp_sen <- clim_stand_sen_s |> 
+  mutate(
+    sp_climsen = rowMeans(across(c(observed_climsen, low_climsen, high_climsen)))
+  )
+
+sp_sen_ove <- sp_sen |> 
+  ungroup() |> 
+  mutate(
+    mean_sp_climsen = mean(sp_climsen)
+    )
+
+names(sp_sen_ove)
+
+mean(c(mean(sp_sen_ove$observed_climsen),
+     mean(sp_sen_ove$low_climsen),
+     mean(sp_sen_ove$high_climsen)))
+
+```
+
+```{r within_sp}
+
+predictions_uncertainty <- predictions_all_changes |>
+  mutate(
+    predFE_observed_climsen = ((predFE_observed_cold_wet - n.plot0) / census.interval / plot.area) - ((predFE_observed_warm_arid - n.plot0) / census.interval / plot.area),
+    predFE_low_climsen = ((predFE_low_cold_wet - n.plot0) / census.interval / plot.area) - ((predFE_low_warm_arid - n.plot0) / census.interval / plot.area),
+    predFE_high_climsen = ((predFE_high_cold_wet - n.plot0) / census.interval / plot.area) - ((predFE_high_warm_arid - n.plot0) / census.interval / plot.area)
+  )
+
+predictions_uncertainty_q <- predictions_uncertainty |> 
+  group_by(species.cor) |> 
+  summarise_at(
+    vars(
+      predFE_observed_climsen, predFE_low_climsen,
+      predFE_high_climsen
+    ), list(
+      q_0025 = \(x) quantile(x, probs = 0.025),
+      q_0975 = \(x) quantile(x, probs = 0.975)
+    )
+  ) |> 
+  select(
+    species.cor,
+    predFE_observed_climsen_q_0025,
+    predFE_observed_climsen_q_0975,
+    predFE_low_climsen_q_0025,
+    predFE_low_climsen_q_0975,
+    predFE_high_climsen_q_0025,
+    predFE_high_climsen_q_0975,
+    )
+
+predictions_uncertainty_q
+
+overlap <- function(var1, var2, x) {
+  between(
+    0, 
+    predictions_uncertainty_q[[var1]][[x]],
+    predictions_uncertainty_q[[var2]][[x]]
+  ) 
+}
+
+all_negative <- function(var1, var2, x) {
+  if_else(predictions_uncertainty_q[[var1]][[x]] < 0 & predictions_uncertainty_q[[var2]][[x]] < 0, T, F)
+}
+
+all_positive <- function(var1, var2, x) {
+  if_else(predictions_uncertainty_q[[var1]][[x]] > 0 & predictions_uncertainty_q[[var2]][[x]] > 0, T, F)
+}
+
+# overlapping 0
+observed_overlap <- map_chr(seq_along(1:nrow(predictions_uncertainty_q)), \(x) overlap(
+  x = x, 
+  var1 = "predFE_observed_climsen_q_0025",
+  var2 = "predFE_observed_climsen_q_0975"))
+
+low_overlap <- map_chr(seq_along(1:nrow(predictions_uncertainty_q)), \(x) overlap(
+  x = x, 
+  var1 = "predFE_low_climsen_q_0025",
+  var2 = "predFE_low_climsen_q_0975"))
+
+high_overlap <- map_chr(seq_along(1:nrow(predictions_uncertainty_q)), \(x) overlap(
+  x = x, 
+  var1 = "predFE_high_climsen_q_0025",
+  var2 = "predFE_high_climsen_q_0975"))
+
+# all negative
+observed_negative <- map_chr(seq_along(1:nrow(predictions_uncertainty_q)), \(x) all_negative(
+  x = x, 
+  var1 = "predFE_observed_climsen_q_0025",
+  var2 = "predFE_observed_climsen_q_0975"))
+
+low_negative <- map_chr(seq_along(1:nrow(predictions_uncertainty_q)), \(x) all_negative(
+  x = x, 
+  var1 = "predFE_low_climsen_q_0025",
+  var2 = "predFE_low_climsen_q_0975"))
+
+high_negative <- map_chr(seq_along(1:nrow(predictions_uncertainty_q)), \(x) all_negative(
+  x = x, 
+  var1 = "predFE_high_climsen_q_0025",
+  var2 = "predFE_high_climsen_q_0975"))
+
+# all positive
+observed_positive <- map_chr(seq_along(1:nrow(predictions_uncertainty_q)), \(x) all_positive(
+  x = x, 
+  var1 = "predFE_observed_climsen_q_0025",
+  var2 = "predFE_observed_climsen_q_0975"))
+
+low_positive <- map_chr(seq_along(1:nrow(predictions_uncertainty_q)), \(x) all_positive(
+  x = x, 
+  var1 = "predFE_low_climsen_q_0025",
+  var2 = "predFE_low_climsen_q_0975"))
+
+high_positive <- map_chr(seq_along(1:nrow(predictions_uncertainty_q)), \(x) all_positive(
+  x = x, 
+  var1 = "predFE_high_climsen_q_0025",
+  var2 = "predFE_high_climsen_q_0975"))
+
+sp_within <- bind_cols(
+  species.cor = predictions_uncertainty_q$species.cor,
+  observed_overlap = observed_overlap,
+  observed_negative = observed_negative,
+  observed_positive = observed_positive,
+  low_overlap = low_overlap,
+  low_negative = low_negative,
+  low_positive = low_positive,
+  high_overlap = high_overlap,
+  high_negative = high_negative,
+  high_positive = high_positive
+  )
+
+percentage <- function(var) {
+  round(sum(sp_within[[var]] == T) /
+    nrow(sp_within), 4) * 100
+}
+
+sp_percentage <- map_dbl(names(sp_within)[!names(sp_within) == "species.cor"], \(x) percentage(x))
+
+names(sp_percentage) <- names(sp_within)[!names(sp_within) == "species.cor"]
+
+sp_percentage_tb <- as_tibble(t(sp_percentage)) |> 
+  mutate(species.cor = "Percentage") |> 
+  select(species.cor, everything())
+
+sp_within_per <- rbind(sp_within, sp_percentage_tb)
+
+test_that("percentages are OK", {
+  expect_equivalent(
+    sum(as.numeric(unlist(sp_within_per[74, 2:4]))), 100
+  )
+  expect_equal(
+    round(sum(as.numeric(unlist(sp_within_per[74, 5:7]))), 1), 100
+  )
+  expect_equal(
+    round(sum(as.numeric(unlist(sp_within_per[74, 8:10]))), 1), 100
+  )
+}
+)
+
+sp_within_per
+
+# test
+fs <- predictions_uncertainty |> 
+  filter(species.cor == "Tilia americana")
+
+# early
+fs_low <- quantile(fs$predFE_low_climsen, probs = c(0.025, .975))
+
+fs_low_tib <- as_tibble(t(fs_low)) |> 
+  rename(p_025 = "2.5%",
+         p_975 = "97.5%")
+
+fs_low_overlap <- fs_low_tib |> 
+  mutate(
+    overlap = between(
+    0, 
+    p_025,
+    p_975
+  ) 
+  )
+
+fs_low_overlap
+
+fs_low_negative <- fs_low_tib |> 
+  mutate(
+    all_negative = if_else(p_025 < 0 & p_975 < 0, T, F)
+  )
+
+fs_low_negative
+
+fs_low_positive <- fs_low_tib |> 
+  mutate(
+    all_positive = if_else(p_025 > 0 & p_975 > 0, T, F)
+  )
+
+fs_low_positive
+
+tibble(
+  a = -10:-1,
+  b = -20:-11,
+  ab = a - b,
+  d = 20:11,
+  e = 10:1,
+  de = d - e 
+)
+
+```
+
+```{r table}
+
+sp_importance <- left_join(sp_sen_ove, sp_within_per, by = "species.cor")
+
+names(sp_importance)
+
+# test
+# predictions_uncertainty_q
+
+sp_importance_signi <- sp_importance |> 
+  mutate(
+    observed_climsen_signi = ifelse(
+      observed_negative == T |
+      observed_positive == T, paste(round(observed_climsen, 2), "*"), round(observed_climsen, 2)
+    ),
+    low_climsen_signi = ifelse(
+      low_negative == T |
+      low_positive == T, paste(round(low_climsen, 2), "*"), round(low_climsen, 2)
+    ),
+    high_climsen_signi = ifelse(
+      high_negative == T |
+      high_positive == T, paste(round(high_climsen, 2), "*"), round(high_climsen, 2)
+    ),
+    sp_climsen = round(sp_climsen, 2),
+    mean_sp_climsen = round(mean_sp_climsen, 2)
+  ) |> 
+  select(
+    species.cor,
+    observed_climsen_signi,
+    low_climsen_signi,
+    high_climsen_signi, 
+    sp_climsen,
+    mean_sp_climsen
+  )
+
+sp_importance_signi_count <- sp_importance_signi |> 
+  mutate_at(
+    vars(observed_climsen_signi, low_climsen_signi, 
+         high_climsen_signi),
+    list(
+     count = \(x) str_detect(x, "\\*")
+    )
+  )
+
+names(sp_importance_signi_count)
+
+sp_importance_per <- tibble(
+  observed_per = sum(sp_importance_signi_count$observed_climsen_signi_count == T) / nrow(sp_importance_signi) * 100,
+  low_per = sum(sp_importance_signi_count$low_climsen_signi_count == T) / nrow(sp_importance_signi) * 100,
+  high_per = sum(sp_importance_signi_count$high_climsen_signi_count == T) / nrow(sp_importance_signi) * 100
+)
+
+names(sp_importance_signi)
+
+sp_importance_per_tb <- tibble(
+  species.cor = "Percentage",
+  observed_climsen_signi = round(sp_importance_per$observed_per, 1), 
+  low_climsen_signi = round(sp_importance_per$low_per, 1),
+  high_climsen_signi = round(sp_importance_per$high_per, 1),
+  sp_climsen = NA,
+  mean_sp_climsen = NA
+)
+
+sp_importance_signi_per <- rbind(sp_importance_signi, sp_importance_per_tb)
+
+names(sp_importance_signi_per)
+
+table_S3 <- sp_importance_signi_per |> 
+  mutate(species.cor2 = species.cor) |> 
+  select(species.cor, observed_climsen_signi, low_climsen_signi, high_climsen_signi) |> 
+  gt(
+    groupname_col = "species.cor2"
+  ) |>
+  cols_label(
+    species.cor = "Species",
+    observed_climsen_signi = "Climatic sensitivity (actual)",
+    low_climsen_signi = "Climatic sensitivity (early)",
+    high_climsen_signi = "Climatic sensitivity (late)"
+    ) |> 
+  tab_style(
+    style = list(
+      cell_text(weight = "bold")
+    ),
+    locations = list(
+      cells_column_labels(gt::everything())
+    )
+    )  |>
+  cols_align(
+    align = "center",
+    columns = gt::everything()
+    ) |> 
+  sub_missing(
+    columns = gt::everything(),
+    missing_text = "-"
+    ) |> 
+  tab_style(
+    style = cell_text(style = "italic"),
+    locations = cells_body(
+      columns = c(species.cor)
+    )
+  )
+
+table_S3
+
+# gtsave(table_S3, "table_S3.rtf", 
+#        path = here("04-results", "tables"))
+
+# negative & positive sp
+table(if_else(sp_importance$observed_climsen < 0, "negative", "positive"))
+table(if_else(sp_importance$low_climsen < 0, "negative", "positive"))
+table(if_else(sp_importance$high_climsen < 0, "negative", "positive"))
+
+```
+

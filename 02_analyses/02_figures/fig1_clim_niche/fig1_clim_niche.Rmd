@@ -1,0 +1,671 @@
+---
+title: "Quantify changes in species abundance across species climatic niche"
+output: github_document
+editor_options: 
+  chunk_output_type: console
+---
+
+<style type="text/css">
+pre {
+  font-size: 10px
+}
+</style>
+
+```{r setup, include = F}
+
+knitr::opts_chunk$set(eval = T, echo = TRUE, message = F, warning = F, out.width = "100%")
+
+library(here)
+library(tidyverse)
+library(patchwork)
+library(testthat)
+library(terra)
+library(fs)
+library(gt)
+
+```
+
+```{r read}
+
+data_model <- readRDS(file = here("02-data", "models", "data_model.rds"))
+
+data_model_chan <- data_model |> 
+  mutate(
+      region = if_else(
+        country == "US", "US", "Europe"
+        ),
+      n.plot_changes = (n.plot - n.plot0) /
+        census.interval / plot.area
+    )
+
+# n. of trees
+# sum(data_model_chan$n.plot0)
+# sum(data_model_chan$n.plot)
+
+```
+
+```{r climate_space_sp}
+
+get_density_climate <- function(dat, sp){
+  
+  arid_q <- as.vector(quantile(probs = c(0.33, 0.66), dat$aridity))
+  
+  arid_q_33 <- arid_q[1]
+  arid_q_66 <- arid_q[2]
+  
+  bio11_q <- as.vector(quantile(probs = c(0.33, 0.66), dat$bio11))
+  
+  bio11_q_33 <- bio11_q[1]
+  bio11_q_66 <- bio11_q[2]
+  
+  dat_q <- dat |>
+    mutate(
+      arid_q = case_when(
+        aridity < arid_q_33 ~ 1, # arid
+        aridity >= arid_q_66 ~ 3, # wet
+        T ~ 2 # mid
+        ),
+      bio11_q = case_when(
+        bio11 < bio11_q_33 ~ 1, # cold
+        bio11 >= bio11_q_66 ~ 3, # warm
+        T ~ 2 # mid
+        )
+    )
+
+  table(dat_q$arid_q)
+  table(dat_q$bio11_q)
+  
+  data_rast <- rast(
+    nrows = 3, ncols = 3,
+    ymin = min(dat_q$arid_q),
+    ymax = max(dat_q$arid_q),
+    xmin = min(dat_q$bio11_q),
+    xmax = max(dat_q$bio11_q)
+    )
+  
+  # get the mean of each species performance in each cell
+  raster_extent <- as.vector(ext(data_rast))
+  
+  raster_extent_tb <- tibble(
+    bio11_min = raster_extent[1],
+    bio11_max = raster_extent[2],
+    aridity_min = raster_extent[3],
+    aridity_max = raster_extent[4]
+    ) |> 
+    mutate(
+      cell_size = (bio11_max - bio11_min) / 3
+      )
+  
+  diag_values <- tibble(
+    bio11 = c(raster_extent_tb$bio11_min, 
+              raster_extent_tb$bio11_min +
+                raster_extent_tb$cell_size,
+              raster_extent_tb$bio11_min +
+                raster_extent_tb$cell_size * 2,
+              raster_extent_tb$bio11_min +
+                raster_extent_tb$cell_size * 3
+              ),
+    aridity = c(raster_extent_tb$aridity_min, 
+              raster_extent_tb$aridity_min +
+                raster_extent_tb$cell_size,
+              raster_extent_tb$aridity_min +
+                raster_extent_tb$cell_size * 2,
+              raster_extent_tb$aridity_min +
+                raster_extent_tb$cell_size * 3
+              )
+  )
+  
+  # diag_values
+  
+  bio11_q33 <- diag_values$bio11[2]
+  bio11_q66 <- diag_values$bio11[3]
+  aridity_q33 <- diag_values$aridity[2]
+  aridity_q66 <- diag_values$aridity[3]
+  
+  dat_q_cell <- dat_q |> 
+    mutate(
+      cell = case_when(
+        bio11_q <= bio11_q33 &
+          arid_q <= aridity_q33 ~ 7,
+        bio11_q >= bio11_q66 & 
+          arid_q >= aridity_q66 ~ 3,
+        bio11_q <= bio11_q33 & 
+          arid_q >= aridity_q66 ~ 1,
+        bio11_q >= bio11_q66 & 
+          arid_q <= aridity_q33 ~ 9,
+        bio11_q <= bio11_q33 & 
+          (arid_q >= aridity_q33 &
+          arid_q <= aridity_q66) ~ 4,
+        bio11_q >= bio11_q66 & 
+          (arid_q >= aridity_q33 &
+          arid_q <= aridity_q66) ~ 6,
+        arid_q <= aridity_q33 & 
+          (bio11_q >= bio11_q33 &
+          bio11_q <= bio11_q66) ~ 8,
+        arid_q >= aridity_q66 & 
+          (bio11_q >= bio11_q33 &
+          bio11_q <= bio11_q66) ~ 2,
+        T ~ 5
+        )
+    )
+  
+  table(dat_q_cell$cell)
+  
+  clim_data <- dat_q_cell |>
+    ungroup() |>
+    dplyr::select(bio11_q, arid_q)
+
+  n.plot_changes <- dat_q_cell |>
+    ungroup() |>
+    dplyr::select(n.plot_changes) |>
+    unlist(use.names = FALSE)
+
+  clim_data_rast_mean <- rasterize(
+    as.matrix(clim_data), data_rast,
+    values = n.plot_changes,
+    fun = mean
+    )
+
+  clim_data_rast_sd <- rasterize(
+    as.matrix(clim_data), data_rast,
+    values = n.plot_changes,
+    fun = sd
+    )
+
+  # plot(clim_data_rast)
+
+  clim_data_df_mean <- as.data.frame(
+    clim_data_rast_mean,
+    xy = T,
+    na.rm = F
+    ) |>
+    rename(
+      tmin = x,
+      aridity = y,
+      mean = lyr.1
+    )
+
+  clim_data_df_sd <- as.data.frame(
+    clim_data_rast_sd,
+    xy = T,
+    na.rm = F
+    ) |>
+    rename(
+      tmin = x,
+      aridity = y,
+      sd = lyr.1
+    )
+
+  # brewer.pal(n = 9, name = "RdBu")
+  # All the diverging palettes are available in variations from 3 different values up to 11 different values.
+
+  ggplot(
+    clim_data_df_mean, aes(x = tmin, y = aridity, fill = mean)
+    ) +
+    geom_raster() +
+    # geom_text(aes(label = seq(1:9)), size = 3,
+    #           nudge_x = 0.3, nudge_y = -0.3) +
+    geom_text(aes(label = "Cold & wet"), x = 1.333333, y = 2.9, size = 4) +
+    geom_text(aes(label = "Warm & wet"), x = 2.666667, y = 2.9, size = 4) +
+    geom_text(aes(label = "Cold & arid"), x = 1.333333, y = 1.56, size = 4) +
+    geom_text(aes(label = "Warm & Arid"), x = 2.666667, y = 1.56, size = 4) +
+     # geom_text(aes(label = paste(round(mean, 1), " ", "(", round(clim_data_df_sd$sd, 1), ")", sep = ""))) +
+    scale_fill_gradient2(
+      mid = "white",
+      midpoint = 0,
+      # limits = c(-10, 14),
+      low = scales::muted("#B2182B"),
+      high = scales::muted("#2166AC"),
+      name =
+        "Annual change\nn. stems per hectare"
+      ) +
+    scale_y_continuous(breaks = c(1, 1.666667, 2.333333, 3),
+                       labels = c(round(min(dat$aridity), 1),
+                                  round(arid_q_33, 1),
+                                  round(arid_q_66, 1),
+                                  round(max(dat$aridity), 1))) +
+    scale_x_continuous(breaks = c(1, 1.666667, 2.333333, 3),
+                       labels = c(round(min(dat$bio11), 1),
+                                  round(bio11_q_33, 1),
+                                  round(bio11_q_66, 1),
+                                  round(max(dat$bio11), 1))) +
+    labs(x = "Minimum temperature (ºC)", y = "Aridity index") +
+    theme(
+      plot.margin = margin(0, 0, 0, 0),
+      axis.title = element_text(colour = "grey20", size = 12),
+      axis.text = element_text(colour = "grey20", size = 12),
+      legend.text = element_text(size = 10),
+      axis.ticks = element_blank(),
+      panel.grid.major = element_line(colour = "grey90", size = 0.5),
+      axis.line = element_blank(),
+      legend.key = element_blank(),
+      panel.background = element_blank(),
+      plot.title = element_text(face = "italic")
+      ) +
+    ggtitle(sp)
+  
+}
+
+clim_space_sp <- data_model_chan |>  
+  group_by(species.cor) |> 
+  nest() |> 
+  mutate(
+    gg_dens_clim = map2(data, species.cor, ~get_density_climate(dat = .x, sp = .y))
+  )
+
+sp_region_v <- data_model_chan |> 
+  filter(region == "Europe") |> 
+  distinct(species.cor) |> 
+  pull(species.cor)
+
+clim_space_sp_eu <- clim_space_sp |> 
+  filter(
+    species.cor %in% sp_region_v
+  ) |> 
+  arrange(species.cor)
+
+clim_space_sp_us <- clim_space_sp |> 
+  filter(
+    !c(species.cor %in% sp_region_v)
+  ) |> 
+  arrange(species.cor)
+
+gg_sp_eu_1_9 <- clim_space_sp_eu$gg_dens_clim[c(1:9)] |>
+  reduce(`+`)
+
+gg_sp_eu_10_18 <- clim_space_sp_eu$gg_dens_clim[c(10:18)] |>
+  reduce(`+`)
+
+ggsave(
+  plot = gg_sp_eu_1_9,
+  filename = here("04-results", "figures", "fig1", "gg_sp_eu_1_9.png"),
+  width = 15.5, height = 10.5,
+  dpi = 600
+)
+
+ggsave(
+  plot = gg_sp_eu_10_18,
+  filename = here("04-results", "figures", "fig1", "gg_sp_eu_10_18.png"),
+  width = 15.5, height = 10.5,
+  dpi = 600
+)
+
+gg_sp_us_1_9 <- clim_space_sp_us$gg_dens_clim[c(1:9)] |>
+  reduce(`+`)
+
+gg_sp_us_10_18 <- clim_space_sp_us$gg_dens_clim[c(10:18)] |>
+  reduce(`+`)
+
+gg_sp_us_19_27 <- clim_space_sp_us$gg_dens_clim[c(19:27)] |>
+  reduce(`+`)
+
+gg_sp_us_28_36 <- clim_space_sp_us$gg_dens_clim[c(28:36)] |>
+  reduce(`+`)
+
+gg_sp_us_37_45 <- clim_space_sp_us$gg_dens_clim[c(37:45)] |>
+  reduce(`+`)
+
+gg_sp_us_46_55 <- clim_space_sp_us$gg_dens_clim[c(46:55)] |>
+  reduce(`+`) +
+  plot_layout(ncol = 3)
+
+gg_sp_us_all <- list(
+  gg_sp_us_1_9,
+  gg_sp_us_10_18,
+  gg_sp_us_19_27,
+  gg_sp_us_28_36,
+  gg_sp_us_37_45
+)
+
+v_sp_us_all <- c(
+  "gg_sp_us_1_9.png",
+  "gg_sp_us_10_18.png",
+  "gg_sp_us_19_27.png",
+  "gg_sp_us_28_36.png",
+  "gg_sp_us_37_45.png"
+)
+
+walk2(gg_sp_us_all, v_sp_us_all, \(x, y) ggsave(
+  plot = x,
+  filename = here("04-results", "figures", "fig1", y),
+  width = 15.5, height = 10.5,
+  dpi = 600
+  ))
+
+ggsave(
+  plot = gg_sp_us_46_55,
+  filename = here("04-results", "figures", "fig1", "gg_sp_us_46_55.png"),
+  width = 15.5, height = 14,
+  dpi = 600
+)
+
+clim_space_sp_filter <- clim_space_sp |> 
+  filter(
+    species.cor == "Quercus robur" |
+      species.cor == "Pinus echinata"
+    )
+
+gg_sp_filter <- clim_space_sp_filter$gg_dens_clim |>
+  reduce(`+`)
+
+gg_sp_filter
+
+```
+
+```{r climate_space_region}
+
+get_mean_climate <- function(dat){
+  
+  arid_q <- as.vector(quantile(probs = c(0.33, 0.66), dat$aridity))
+  
+  arid_q_33 <- arid_q[1]
+  arid_q_66 <- arid_q[2]
+  
+  bio11_q <- as.vector(quantile(probs = c(0.33, 0.66), dat$bio11))
+  
+  bio11_q_33 <- bio11_q[1]
+  bio11_q_66 <- bio11_q[2]
+
+  dat_q <- dat |>
+    mutate(
+      arid_q = case_when(
+        aridity < arid_q_33 ~ 1, # arid
+        aridity >= arid_q_66 ~ 3, # wet
+        T ~ 2 # mid
+        ),
+      bio11_q = case_when(
+        bio11 < bio11_q_33 ~ 1, # cold
+        bio11 >= bio11_q_66 ~ 3, # warm
+        T ~ 2 # mid
+        )
+    )
+
+  table(dat_q$arid_q)
+  table(dat_q$bio11_q)
+
+  data_rast <- rast(
+    nrows = 3, ncols = 3,
+    ymin = min(dat_q$arid_q),
+    ymax = max(dat_q$arid_q),
+    xmin = min(dat_q$bio11_q),
+    xmax = max(dat_q$bio11_q)
+    )
+  
+  # get the mean of each species performance in each cell
+  raster_extent <- as.vector(ext(data_rast))
+  
+  raster_extent_tb <- tibble(
+    bio11_min = raster_extent[1],
+    bio11_max = raster_extent[2],
+    aridity_min = raster_extent[3],
+    aridity_max = raster_extent[4]
+    ) |> 
+    mutate(
+      cell_size = (bio11_max - bio11_min) / 3
+      )
+  
+  diag_values <- tibble(
+    bio11 = c(raster_extent_tb$bio11_min, 
+              raster_extent_tb$bio11_min +
+                raster_extent_tb$cell_size,
+              raster_extent_tb$bio11_min +
+                raster_extent_tb$cell_size * 2,
+              raster_extent_tb$bio11_min +
+                raster_extent_tb$cell_size * 3
+              ),
+    aridity = c(raster_extent_tb$aridity_min, 
+              raster_extent_tb$aridity_min +
+                raster_extent_tb$cell_size,
+              raster_extent_tb$aridity_min +
+                raster_extent_tb$cell_size * 2,
+              raster_extent_tb$aridity_min +
+                raster_extent_tb$cell_size * 3
+              )
+  )
+  
+  # diag_values
+  
+  bio11_q33 <- diag_values$bio11[2]
+  bio11_q66 <- diag_values$bio11[3]
+  aridity_q33 <- diag_values$aridity[2]
+  aridity_q66 <- diag_values$aridity[3]
+  
+ dat_q_cell <- dat_q |> 
+    mutate(
+      cell = case_when(
+        bio11_q <= bio11_q33 &
+          arid_q <= aridity_q33 ~ 7,
+        bio11_q >= bio11_q66 & 
+          arid_q >= aridity_q66 ~ 3,
+        bio11_q <= bio11_q33 & 
+          arid_q >= aridity_q66 ~ 1,
+        bio11_q >= bio11_q66 & 
+          arid_q <= aridity_q33 ~ 9,
+        bio11_q <= bio11_q33 & 
+          (arid_q >= aridity_q33 &
+          arid_q <= aridity_q66) ~ 4,
+        bio11_q >= bio11_q66 & 
+          (arid_q >= aridity_q33 &
+          arid_q <= aridity_q66) ~ 6,
+        arid_q <= aridity_q33 & 
+          (bio11_q >= bio11_q33 &
+          bio11_q <= bio11_q66) ~ 8,
+        arid_q >= aridity_q66 & 
+          (bio11_q >= bio11_q33 &
+          bio11_q <= bio11_q66) ~ 2,
+        T ~ 5
+        )
+    )
+  
+  table(dat_q_cell$cell)
+  
+  clim_data <- dat_q_cell |>
+    ungroup() |>
+    dplyr::select(bio11_q, arid_q)
+  
+  n.plot_changes <- dat_q_cell |> 
+    ungroup() |> 
+    dplyr::select(n.plot_changes) |> 
+    unlist(use.names = FALSE)
+  
+  clim_data_rast_mean <- rasterize(
+    as.matrix(clim_data), data_rast,
+    values = n.plot_changes,
+    fun = mean
+    )
+  
+  clim_data_df_mean <- as.data.frame(
+    clim_data_rast_mean,
+    xy = T,
+    na.rm = F
+    ) |> 
+    rename(
+      tmin = x,
+      aridity = y,
+      mean_species = lyr.1
+    ) |> 
+    mutate(
+      cell = 1:n()
+    )
+
+}
+
+clim_space_sp_mean <- data_model_chan |>  
+  group_by(species.cor) |> 
+  nest() |> 
+  mutate(
+    clim_mean = map(data, ~get_mean_climate(dat = .x))
+  )
+
+clim_space_cell <- clim_space_sp_mean |> 
+  unnest(clim_mean) |> 
+  dplyr::select(!data) |> 
+  mutate(
+    region = if_else(species.cor %in% sp_region_v, "Europe", "US") 
+  ) |> 
+  group_by(cell) |>
+  mutate(
+    mean_all = mean(mean_species),
+    sd_all = sd(mean_species),
+    se_all = round(sd(mean_species) / sqrt(length(unique(species.cor))), 1)
+  )
+
+df_text_mean <- clim_space_cell |> 
+  group_by(cell) |>
+  summarise(
+    mean_all = round(mean(mean_species), 1),
+    sd_all = round(sd(mean_species), 1),
+    se_all = round(sd(mean_species) / sqrt(length(unique(species.cor))), 1)
+  ) |> 
+  mutate(
+    x = 5,
+    y = 15
+  )
+
+cell_labs <- c("Cold & wet", "", "Warm & wet", 
+               "", "", "",
+               "Cold & arid", "", "Warm & arid")
+
+names(cell_labs) <- 1:9
+
+gg_region_hist <- function(df, text_mean) {
+ ggplot(df, 
+         aes(x = mean_species, fill = ..x..)) +
+    geom_histogram(
+      binwidth = 1, colour = "grey50", size = .1
+    ) +
+    geom_vline(aes(xintercept = 0),
+               linetype = "dashed",
+               colour = "black", size = .5) +
+    facet_wrap(cell ~ .,
+               labeller = labeller(cell = cell_labs)) +
+    labs(y = "N. species", x = "") +
+    scale_fill_gradient2(
+      mid = "white",
+      midpoint = 0,
+      low = scales::muted("#B2182B"),
+      high = scales::muted("#2166AC"),
+      name = "Annual change\nn. stems per hectare",
+    ) + 
+    scale_x_continuous(breaks = c(-15, -10, -5, 0, 5, 10)) +
+    theme(
+      strip.background = element_blank(),
+      strip.text =  element_text(size = 11, 
+                                 colour = "grey20"),
+      plot.margin = margin(0, 0, 0, 0),
+      axis.title = element_text(colour = "grey20", size = 12),
+      legend.text = element_text(size = 10),
+      axis.ticks = element_line(colour = "grey40"),
+      panel.grid.major = element_line(colour = "grey90", size = 0.5),
+      axis.line = element_blank(),
+      legend.key = element_blank(),
+      panel.background = element_blank(),
+      panel.spacing = unit(0, "lines")
+    ) +
+    geom_text(data = text_mean, 
+              aes(label = paste(mean_all, "\ub1", se_all), x = x, y = y), 
+              size = 3.5,
+              color = "grey40")
+}
+
+fig1_hist <- gg_region_hist(
+  df = clim_space_cell,
+  text_mean = df_text_mean
+  )
+
+```
+
+```{r fig1_main}
+
+fig1_main <- gg_sp_filter /
+  fig1_hist +
+  plot_annotation(tag_levels = "A", tag_prefix = "(", tag_suffix = ")")
+
+fig1_main
+
+ggsave(
+  plot = fig1_main,
+  filename = here("04-results", "figures", "fig1", "fig1_main.png"),
+  width = 12, height = 8,
+  dpi = 600
+)
+
+```
+
+```{r percentages}
+
+clim_space_pos_neg <- clim_space_cell |> 
+  group_by(species.cor) |> 
+  mutate(
+    pos_neg = case_when(
+      mean_species > 0 ~ "positive",
+      mean_species < 0 ~ "negative"
+    )
+  )
+
+clim_space_per <- clim_space_pos_neg |> 
+  group_by(cell) |>
+  summarise(
+    per_neg  = sum(pos_neg == "negative") / length(unique(species.cor)) * 100,
+    per_pos  = sum(pos_neg == "positive") / length(unique(species.cor)) * 100,
+    per = per_neg + per_pos
+  )
+
+test_that("percentages are OK", {
+  expect_equal(
+    unique(round(clim_space_per$per)), 100
+  )
+  expect_equal(
+    sum(clim_space_pos_neg$pos_neg == "positive" & clim_space_pos_neg$cell == 1) / 73 * 100, 
+    clim_space_per$per_pos[clim_space_per$cell == 1]
+  )
+})
+
+# table
+table_S2 <- clim_space_per |> 
+  mutate(cell2 = cell,
+         cell = case_when(
+           cell == "1" ~ "1 (Cold & wet)",
+           cell == "3" ~ "3 (Warm & wet)",
+           cell == "7" ~ "7 (Cold & arid)",
+           cell == "9" ~ "9 (Warm & arid)",
+           T ~ as.character(cell)
+         )
+  ) |> 
+  select(cell, per_neg, per_pos) |> 
+  gt(
+    groupname_col = "cell2"
+  ) |>
+  fmt_number(
+    columns = c(per_neg, per_pos),
+    decimals = 1
+  ) |> 
+  cols_label(
+    cell = "Cell",
+    per_neg = "Species decreasing (%)",
+    per_pos = "Species increasing (%)"
+  ) |> 
+  tab_style(
+    style = list(
+      cell_text(weight = "bold")
+    ),
+    locations = list(
+      cells_column_labels(gt::everything())
+    )
+  )  |>
+  cols_align(
+    align = "center",
+    columns = gt::everything()
+  ) |> 
+  sub_missing(
+    columns = gt::everything(),
+    missing_text = "-"
+  )
+
+table_S2
+
+# gtsave(table_S2, "table_S2.rtf", 
+#        path = here("04-results", "tables"))
+
+```
+
