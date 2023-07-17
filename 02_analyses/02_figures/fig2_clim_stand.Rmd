@@ -1,5 +1,5 @@
 ---
-title: "Quantify species abundance shifts adjusting for stand development"
+title: "Quantify changes in species abundance across species climatic niche adjusting for stand development"
 output: github_document
 editor_options: 
   chunk_output_type: console
@@ -27,16 +27,14 @@ library(magick)
 
 ```{r read}
 
-data_model <- readRDS(file = here("02-data", "models", "data_model.rds"))
-
 read_data <- function(data_dir){
   fs::dir_ls(data_dir, regexp = "\\.rds$") |>
     purrr::map(read_rds)
 }
 
-all_files <- read_data(data_dir = here("02-data", "models", "predictions"))
+all_files <- read_data(data_dir = here("01_data", "species_predictions"))
 
-all_files_dir <- dir_ls(here("02-data", "models", "predictions"), regexp = "\\.rds$")
+all_files_dir <- dir_ls(here("01_data", "species_predictions"), regexp = "\\.rds$")
 
 all_files_dir_names <- map(all_files_dir, ~str_extract(.x, "[^/]*$")) |> 
   map(~str_replace(.x, "_", " ")) |> 
@@ -45,9 +43,26 @@ all_files_dir_names <- map(all_files_dir, ~str_extract(.x, "[^/]*$")) |>
 
 names(all_files) <- all_files_dir_names
 
-data_eu <- readRDS(file = here("02-data", "processed", "eu_sp_data.rds"))
-
-unique(data_eu$species.cor)
+eu_sp <- c(
+  "Pinus halepensis",  
+  "Quercus ilex",      
+  "Quercus faginea",   
+  "Pinus nigra",       
+  "Pinus sylvestris",  
+  "Fagus sylvatica",   
+  "Quercus pyrenaica", 
+  "Populus tremula",   
+  "Betula pendula",    
+  "Fraxinus excelsior",
+  "Pinus pinaster",    
+  "Pinus pinea",       
+  "Quercus robur",     
+  "Alnus glutinosa",   
+  "Larix decidua",     
+  "Picea abies",       
+  "Betula pubescens",  
+  "Carpinus betulus"
+)
 
 ```
 
@@ -68,17 +83,6 @@ all_files_tb <- arg2_x_names_sp |>
 map(all_files_tb, \(x) sum(is.na(x)))
 
 predictions_all_changes <- all_files_tb
-
-names(data_model)
-
-data_model_s <- data_model |> 
-  select(
-    tmt.plot.id,
-    plot.area,
-    species.cor
-  )
-
-predictions_all_changes <- left_join(predictions_all_changes, data_model_s, by = c("tmt.plot.id", "species.cor"))
 
 names(predictions_all_changes)
 
@@ -143,14 +147,11 @@ pred_changes_l_rel <- pred_all_changes_l |>
       )
   )
 
-kk <- pred_changes_l_rel |> 
-  filter(species.cor == "Fagus sylvatica")
-
 pred_changes_l_rel_eu <- pred_changes_l_rel |> 
-  filter(species.cor %in% unique(data_eu$species.cor))
+  filter(species.cor %in% eu_sp)
 
 pred_changes_l_rel_us <- pred_changes_l_rel |> 
-  filter(!species.cor %in% unique(data_eu$species.cor))
+  filter(!species.cor %in% eu_sp)
 
 gg_slab_sp_clim <- function(dat){
   ggplot(dat, aes(y = fct_rev(species.cor), x = val_predFE_fd,
@@ -196,7 +197,7 @@ fig2_intrasp_eu_clim <- gg_slab_sp_clim(pred_changes_l_rel_eu)
 
 ggsave(
   plot = fig2_intrasp_eu_clim,
-  here("04-results", "figures", "fig2", "fig2_intrasp_eu.png"),
+  here("03_results", "figures", "fig2", "fig2_intrasp_eu.png"),
   width = 8, height = 8,
   dpi = 600
 )
@@ -226,8 +227,6 @@ pred_us_all <- list(
 
 gg_pred_us_all <- map(pred_us_all, \(x) gg_slab_sp_clim(x))
 
-gg_pred_us_all
-
 v_pred_us_all <- c(
   "pred_us_sp_1_18.png",
   "pred_us_sp_19_36.png",
@@ -236,7 +235,7 @@ v_pred_us_all <- c(
 
 walk2(gg_pred_us_all, v_pred_us_all, \(x, y) ggsave(
   plot = x,
-  filename = here("04-results", "figures", "fig2", y),
+  filename = here("03_results", "figures", "fig2", y),
   width = 8, height = 8,
   dpi = 600
   ))
@@ -385,7 +384,7 @@ fig2_hist <- gg_sensitivity_hist(
 
 ggsave(
   plot = fig2_hist,
-  here("04-results", "figures", "fig2", "fig2_hist.png"),
+  here("03_results", "figures", "fig2", "fig2_hist.png"),
   width = 8, height = 2.1,
   dpi = 600
 )
@@ -403,14 +402,14 @@ fig2_slab <- (gg_slab_sp_clim(dat = pred_changes_l_rel_sp) +
 
 ggsave(
   plot = fig2_slab,
-  here("04-results", "figures", "fig2", "fig2_slab.png"),
+  here("03_results", "figures", "fig2", "fig2_slab.png"),
   width = 10, height = 8.2,
   dpi = 600
 )
 
-fig2_hist_m <- image_read(here("04-results", "figures", "fig2", "fig2_hist.png"))
+fig2_hist_m <- image_read(here("03_results", "figures", "fig2", "fig2_hist.png"))
 
-fig2_slab_m <- image_read(here("04-results", "figures", "fig2", "fig2_slab.png"))
+fig2_slab_m <- image_read(here("03_results", "figures", "fig2", "fig2_slab.png"))
 
 fig2_main_m <- image_composite(
   fig2_slab_m, fig2_hist_m,
@@ -420,7 +419,7 @@ fig2_main_m <- image_composite(
 fig2_main_m
 
 image_write(fig2_main_m, here(
-  "04-results", "figures", "fig2", "fig2_main.png"
+  "03_results", "figures", "fig2", "fig2_main.png"
 ), density = 600)
 
 ```
@@ -537,49 +536,49 @@ all_positive <- function(var1, var2, x) {
 }
 
 # overlapping 0
-observed_overlap <- map_chr(seq_along(1:nrow(predictions_uncertainty_q)), \(x) overlap(
+observed_overlap <- map_vec(seq_along(1:nrow(predictions_uncertainty_q)), \(x) overlap(
   x = x, 
   var1 = "predFE_observed_climsen_q_0025",
   var2 = "predFE_observed_climsen_q_0975"))
 
-low_overlap <- map_chr(seq_along(1:nrow(predictions_uncertainty_q)), \(x) overlap(
+low_overlap <- map_vec(seq_along(1:nrow(predictions_uncertainty_q)), \(x) overlap(
   x = x, 
   var1 = "predFE_low_climsen_q_0025",
   var2 = "predFE_low_climsen_q_0975"))
 
-high_overlap <- map_chr(seq_along(1:nrow(predictions_uncertainty_q)), \(x) overlap(
+high_overlap <- map_vec(seq_along(1:nrow(predictions_uncertainty_q)), \(x) overlap(
   x = x, 
   var1 = "predFE_high_climsen_q_0025",
   var2 = "predFE_high_climsen_q_0975"))
 
 # all negative
-observed_negative <- map_chr(seq_along(1:nrow(predictions_uncertainty_q)), \(x) all_negative(
+observed_negative <- map_vec(seq_along(1:nrow(predictions_uncertainty_q)), \(x) all_negative(
   x = x, 
   var1 = "predFE_observed_climsen_q_0025",
   var2 = "predFE_observed_climsen_q_0975"))
 
-low_negative <- map_chr(seq_along(1:nrow(predictions_uncertainty_q)), \(x) all_negative(
+low_negative <- map_vec(seq_along(1:nrow(predictions_uncertainty_q)), \(x) all_negative(
   x = x, 
   var1 = "predFE_low_climsen_q_0025",
   var2 = "predFE_low_climsen_q_0975"))
 
-high_negative <- map_chr(seq_along(1:nrow(predictions_uncertainty_q)), \(x) all_negative(
+high_negative <- map_vec(seq_along(1:nrow(predictions_uncertainty_q)), \(x) all_negative(
   x = x, 
   var1 = "predFE_high_climsen_q_0025",
   var2 = "predFE_high_climsen_q_0975"))
 
 # all positive
-observed_positive <- map_chr(seq_along(1:nrow(predictions_uncertainty_q)), \(x) all_positive(
+observed_positive <- map_vec(seq_along(1:nrow(predictions_uncertainty_q)), \(x) all_positive(
   x = x, 
   var1 = "predFE_observed_climsen_q_0025",
   var2 = "predFE_observed_climsen_q_0975"))
 
-low_positive <- map_chr(seq_along(1:nrow(predictions_uncertainty_q)), \(x) all_positive(
+low_positive <- map_vec(seq_along(1:nrow(predictions_uncertainty_q)), \(x) all_positive(
   x = x, 
   var1 = "predFE_low_climsen_q_0025",
   var2 = "predFE_low_climsen_q_0975"))
 
-high_positive <- map_chr(seq_along(1:nrow(predictions_uncertainty_q)), \(x) all_positive(
+high_positive <- map_vec(seq_along(1:nrow(predictions_uncertainty_q)), \(x) all_positive(
   x = x, 
   var1 = "predFE_high_climsen_q_0025",
   var2 = "predFE_high_climsen_q_0975"))
@@ -737,7 +736,16 @@ sp_importance_per_tb <- tibble(
   mean_sp_climsen = NA
 )
 
-sp_importance_signi_per <- rbind(sp_importance_signi, sp_importance_per_tb)
+sp_mean_tb <- tibble(
+  species.cor = "Mean",
+  observed_climsen_signi = round(mean(sp_importance$observed_climsen), 2), 
+  low_climsen_signi = round(mean(sp_importance$low_climsen), 2),
+  high_climsen_signi = round(mean(sp_importance$high_climsen), 2),
+  sp_climsen = NA,
+  mean_sp_climsen = NA
+)
+
+sp_importance_signi_per <- rbind(sp_importance_signi, sp_mean_tb, sp_importance_per_tb)
 
 names(sp_importance_signi_per)
 
@@ -785,6 +793,16 @@ table_S3
 table(if_else(sp_importance$observed_climsen < 0, "negative", "positive"))
 table(if_else(sp_importance$low_climsen < 0, "negative", "positive"))
 table(if_else(sp_importance$high_climsen < 0, "negative", "positive"))
+
+# only for significant changes
+# actual
+sum(sp_importance_signi_count$observed_climsen_signi_count == T & sp_importance_signi_count$observed_climsen_signi > 0) / sum(sp_importance_signi_count$observed_climsen_signi_count == T) * 100
+
+# early
+sum(sp_importance_signi_count$low_climsen_signi_count == T & sp_importance_signi_count$low_climsen_signi > 0) / sum(sp_importance_signi_count$low_climsen_signi_count == T) * 100
+
+# late
+sum(sp_importance_signi_count$high_climsen_signi_count == T & sp_importance_signi_count$high_climsen_signi > 0) / sum(sp_importance_signi_count$high_climsen_signi_count == T) * 100
 
 ```
 

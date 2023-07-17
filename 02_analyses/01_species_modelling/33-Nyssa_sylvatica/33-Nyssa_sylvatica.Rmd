@@ -305,7 +305,10 @@ predictions_selected <- map(
   newdata_list_predictions,
   ~dplyr::select(.x, tmt.plot.id, 
                  census.interval,
-                 for.dev, n.plot0, 
+                 for.dev, 
+                 country, plot.area,
+                 bio11.mean, aridity.mean,
+                 n.plot0, 
                  n.plot, predFE))
 
 # add prediction name to each dataset
@@ -326,6 +329,8 @@ clean_predictions <- function(dat, pred_name){
     filter(df == dat) |> 
     dplyr::select(tmt.plot.id,
                   census.interval,
+                  country, plot.area,
+                  bio11.mean, aridity.mean,
                   n.plot0, n.plot, predFE) |> 
     rename({{pred_name}} := predFE)
 }
@@ -367,7 +372,10 @@ predictions_selected_changes <- arg2_dat_pred_v %>%
 predictions_all_changes <- predictions_selected_changes |>
   reduce(left_join, by = c("tmt.plot.id",
                            "n.plot", "n.plot0",
-                           "census.interval"))
+                           "census.interval",
+                           "country", "plot.area",
+                           "bio11.mean", "aridity.mean"
+                           ))
 
 pred_all_changes_l <- predictions_all_changes |>
   pivot_longer(

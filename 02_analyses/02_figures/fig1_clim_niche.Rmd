@@ -27,7 +27,7 @@ library(gt)
 
 ```{r read}
 
-data_model <- readRDS(file = here("02-data", "models", "data_model.rds"))
+data_model <- readRDS(file = here("01_data", "data_model.rds"))
 
 data_model_chan <- data_model |> 
   mutate(
@@ -278,14 +278,14 @@ gg_sp_eu_10_18 <- clim_space_sp_eu$gg_dens_clim[c(10:18)] |>
 
 ggsave(
   plot = gg_sp_eu_1_9,
-  filename = here("04-results", "figures", "fig1", "gg_sp_eu_1_9.png"),
+  filename = here("03_results", "figures", "fig1", "gg_sp_eu_1_9.png"),
   width = 15.5, height = 10.5,
   dpi = 600
 )
 
 ggsave(
   plot = gg_sp_eu_10_18,
-  filename = here("04-results", "figures", "fig1", "gg_sp_eu_10_18.png"),
+  filename = here("03_results", "figures", "fig1", "gg_sp_eu_10_18.png"),
   width = 15.5, height = 10.5,
   dpi = 600
 )
@@ -327,14 +327,14 @@ v_sp_us_all <- c(
 
 walk2(gg_sp_us_all, v_sp_us_all, \(x, y) ggsave(
   plot = x,
-  filename = here("04-results", "figures", "fig1", y),
+  filename = here("03_results", "figures", "fig1", y),
   width = 15.5, height = 10.5,
   dpi = 600
   ))
 
 ggsave(
   plot = gg_sp_us_46_55,
-  filename = here("04-results", "figures", "fig1", "gg_sp_us_46_55.png"),
+  filename = here("03_results", "figures", "fig1", "gg_sp_us_46_55.png"),
   width = 15.5, height = 14,
   dpi = 600
 )
@@ -585,7 +585,7 @@ fig1_main
 
 ggsave(
   plot = fig1_main,
-  filename = here("04-results", "figures", "fig1", "fig1_main.png"),
+  filename = here("03_results", "figures", "fig1", "fig1_main.png"),
   width = 12, height = 8,
   dpi = 600
 )
@@ -641,7 +641,7 @@ table_S2 <- clim_space_per |>
     decimals = 1
   ) |> 
   cols_label(
-    cell = "Cell",
+    cell = "Region",
     per_neg = "Species decreasing (%)",
     per_pos = "Species increasing (%)"
   ) |> 

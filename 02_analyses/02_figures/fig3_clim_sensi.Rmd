@@ -30,16 +30,14 @@ library(ggeffects)
 
 ```{r read}
 
-data_model <- readRDS(file = here("02-data", "models", "data_model.rds"))
-
 read_data <- function(data_dir){
   fs::dir_ls(data_dir, regexp = "\\.rds$") |>
     purrr::map(read_rds)
 }
 
-all_files <- read_data(data_dir = here("02-data", "models", "predictions"))
+all_files <- read_data(data_dir = here("01_data", "species_predictions"))
 
-all_files_dir <- dir_ls(here("02-data", "models", "predictions"), regexp = "\\.rds$")
+all_files_dir <- dir_ls(here("01_data", "species_predictions"), regexp = "\\.rds$")
 
 all_files_dir_names <- map(all_files_dir, ~str_extract(.x, "[^/]*$")) |> 
   map(~str_replace(.x, "_", " ")) |> 
@@ -68,31 +66,7 @@ predictions_all_changes <- all_files_tb
 
 names(predictions_all_changes)
 
-names(data_model)
-
-data_model_s <- data_model |> 
-  select(
-    tmt.plot.id,
-    country, plot.area,
-    species.cor, 
-    bio11.mean, aridity.mean
-  )
-
-predictions_species <- left_join(predictions_all_changes, data_model_s, by = c("tmt.plot.id", "species.cor"))
-
-test_that("for dev and species traits
-          are joined correctly", {
-  expect_equal(
-    nrow(predictions_species |> 
-  distinct(species.cor,
-    bio11.mean, aridity.mean)),
-    length(unique(data_model$species.cor))
-    )
-})
-
-names(predictions_species)
-
-predictions_species_climsen <- predictions_species |>
+predictions_species_climsen <- predictions_all_changes |>
   mutate(
     high_climsen = ((predFE_high_cold_wet - n.plot0) / census.interval / plot.area) - ((predFE_high_warm_arid - n.plot0) / census.interval / plot.area)
   )
