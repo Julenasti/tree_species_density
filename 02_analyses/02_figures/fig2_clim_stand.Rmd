@@ -242,7 +242,7 @@ walk2(gg_pred_us_all, v_pred_us_all, \(x, y) ggsave(
 
 ```
 
-```{r main_plot}
+```{r fig2_main}
 
 # species
 pred_changes_l_rel_sp <- pred_changes_l_rel |> 

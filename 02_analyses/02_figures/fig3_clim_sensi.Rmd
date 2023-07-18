@@ -123,12 +123,8 @@ x11()
 par(mfrow = c(2, 2))
 plot(simres)
 
-# performance::check_predictions(mod)
-
-
 # lmer robustness diagnostic
 # a lm model calculating the mean change per species
-
 predictions_species_climsen_lm <- predictions_species_climsen_mod |> 
   group_by(species.cor) |> 
   summarise(
@@ -155,7 +151,7 @@ summary(mod_lm)
 
 ```
 
-```{r scatterplots}
+```{r fig3_main}
 
 predict_ggeffects <- function(m, var){
   ggpredict(model = m, 
@@ -243,7 +239,7 @@ all_plot_ggeffects_lmer
   
 ggsave(
   plot = all_plot_ggeffects_lmer,
-  here("04-results", "figures", "fig3", "fig3_main.png"),
+  here("03_results", "figures", "fig3", "fig3_main.png"),
   width = 9, height = 4,
   dpi = 600
 )
@@ -272,7 +268,7 @@ all_plot_ggeffects_lm
   
 ggsave(
   plot = all_plot_ggeffects_lm,
-  here("04-results", "figures", "fig3", "fig3_main_lm.png"),
+  here("03_results", "figures", "fig3", "fig3_lm.png"),
   width = 10, height = 5,
   dpi = 600
 )
