@@ -183,7 +183,7 @@ plot_ggeffects <- function(pred, xlab){
       ylim = c(-2.5, 2.5),
       ) +
     theme(
-      panel.grid.major = element_line(colour = "grey90", size = 0.5),
+      panel.grid.major = element_line(colour = "grey90", linewidth = 0.5),
       panel.background = element_blank(),
       axis.text = element_text(size = 10, colour = "black"),
       axis.title = element_text(size = 10, colour = "black"),

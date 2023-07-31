@@ -334,13 +334,13 @@ test_that("SE is OK", {
 
 gg_sensitivity_hist <- function(df, text_mean) {
  ggplot(df, 
-         aes(x = val_diff_fd, fill = ..x..)) +
+         aes(x = val_diff_fd, fill = after_stat(x))) +
     geom_histogram(
-      binwidth = 2.25, colour = "grey50", size = .25
+      binwidth = 2.25, colour = "black", linewidth = .25
     ) +
     geom_vline(aes(xintercept = 0),
                linetype = "dashed",
-               colour = "black", size = .5) +
+               colour = "black", linewidth = .5) +
     facet_wrap(name_diff_fd ~ .) +
     labs(y = "N. species", x = "") +
     scale_fill_gradient2(
@@ -359,7 +359,7 @@ gg_sensitivity_hist <- function(df, text_mean) {
       axis.text = element_text(size = 10, colour = "black"),
       legend.text = element_text(size = 10),
       legend.title = element_text(size = 10),
-      panel.grid.major = element_line(colour = "grey90", size = 0.5),
+      panel.grid.major = element_line(colour = "grey90", linewidth = 0.5),
       axis.line = element_blank(),
       legend.key = element_blank(),
       panel.background = element_blank(),

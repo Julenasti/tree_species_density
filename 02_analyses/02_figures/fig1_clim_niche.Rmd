@@ -236,7 +236,7 @@ get_density_climate <- function(dat, sp){
       axis.text = element_text(colour = "grey20", size = 12),
       legend.text = element_text(size = 10),
       axis.ticks = element_blank(),
-      panel.grid.major = element_line(colour = "grey90", size = 0.5),
+      panel.grid.major = element_line(colour = "grey90", linewidth = 0.5),
       axis.line = element_blank(),
       legend.key = element_blank(),
       panel.background = element_blank(),
@@ -518,7 +518,7 @@ df_text_mean <- clim_space_cell |>
     se_all = round(sd(mean_species) / sqrt(length(unique(species.cor))), 1)
   ) |> 
   mutate(
-    x = 5,
+    x = -10,
     y = 15
   )
 
@@ -530,13 +530,13 @@ names(cell_labs) <- 1:9
 
 gg_region_hist <- function(df, text_mean) {
  ggplot(df, 
-         aes(x = mean_species, fill = ..x..)) +
+         aes(x = mean_species, fill = after_stat(x))) +
     geom_histogram(
-      binwidth = 1, colour = "grey50", size = .1
+      binwidth = 1, colour = "black", linewidth = .1
     ) +
     geom_vline(aes(xintercept = 0),
                linetype = "dashed",
-               colour = "black", size = .5) +
+               colour = "black", linewidth = .5) +
     facet_wrap(cell ~ .,
                labeller = labeller(cell = cell_labs)) +
     labs(y = "N. species", x = "") +
@@ -556,7 +556,7 @@ gg_region_hist <- function(df, text_mean) {
       axis.title = element_text(colour = "grey20", size = 12),
       legend.text = element_text(size = 10),
       axis.ticks = element_line(colour = "grey40"),
-      panel.grid.major = element_line(colour = "grey90", size = 0.5),
+      panel.grid.major = element_line(colour = "grey90", linewidth = 0.5),
       axis.line = element_blank(),
       legend.key = element_blank(),
       panel.background = element_blank(),
