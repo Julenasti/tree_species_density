@@ -1,1 +1,1 @@
-analysed 01_data to obtain 03_results
+analyses of 01_data to obtain 03_results

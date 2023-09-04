@@ -52,32 +52,3 @@ coplot_fd_bio11 <- function(dat){
   coplot(log(n.plot) ~ for.dev | bio11,
          data = dat)
 }
-
-# maps
-map_vars <- function(dat, var){
-  map_data("world") %>% 
-    ggplot(aes(x = long, y = lat)) +
-    geom_polygon(aes(fill = NA, group = group),
-                 color = "black", size = 0.5, fill = NA) +
-    coord_fixed(xlim = c(-140, 40), ylim = c(25, 70), ratio = 1.3) +
-    geom_point(data = dat,
-               aes(x = longitude,
-                   y = latitude,
-                   color = .data[[var]]),
-               size = 0.3) +
-    xlab("Longitude") +
-    ylab("Latitude") +
-    scale_colour_viridis() +
-    theme(
-      plot.margin = margin(0, 0, 0, 0),
-      axis.title = element_blank(),
-      axis.text.x = element_text(colour = "grey50", size = 8),
-      axis.text.y = element_text(colour = "grey50", size = 8),
-      axis.ticks = element_blank(),
-      panel.grid.major = element_line(colour = "grey90", size = 0.5),
-      axis.line = element_blank(),
-      legend.key = element_blank(),
-      panel.background = element_blank()
-    )
-}
-

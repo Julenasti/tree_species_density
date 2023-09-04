@@ -1,5 +1,5 @@
 ---
-title: "Quantify changes in species abundance across species climatic niche"
+title: "Quantify changes in species abundance across species climatic niches"
 output: github_document
 editor_options: 
   chunk_output_type: console
