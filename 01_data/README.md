@@ -1,4 +1,5 @@
 processed data obtained from raw data
+
 name of variables, definition and units in brackets
 - tmt.plot.id: unique name for each plot
 - n.plot0: number of individuals on the total plot area in the first census (no individuals)
