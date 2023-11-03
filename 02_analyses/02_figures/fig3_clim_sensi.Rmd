@@ -5,6 +5,8 @@ editor_options:
   chunk_output_type: console
 ---
 
+REVISAR NOMBRES DE VARIABLES Y DATASETS Y TERMINAR
+
 ```{=html}
 <style type="text/css">
 pre {
@@ -68,52 +70,66 @@ names(predictions_all_changes)
 
 predictions_species_climsen <- predictions_all_changes |>
   mutate(
-    high_climsen = ((predFE_high_cold_wet - n.plot0) / census.interval / plot.area) - ((predFE_high_warm_arid - n.plot0) / census.interval / plot.area)
+    high.climsen = ((predFE_high_cold_wet - n.plot0) / census.interval / plot.area) - ((predFE_high_warm_arid - n.plot0) / census.interval / plot.area)
   )
+
+```
+
+```{r remove_chunk}
+
+data_model <- readRDS(file = here("01_data", "data_model.rds"))
+
+data_model_traits <- data_model |> 
+  distinct(species.cor, 
+           mean.wood.density, mean.seed.dry.mass)
+
+predictions_species_climsen <- left_join(
+  predictions_species_climsen, 
+  data_model_traits, by = "species.cor"
+)
 
 ```
 
 ```{r models}
 
 # response variable distributions
-hist(predictions_species_climsen$high_climsen, breaks = 100)
-summary(predictions_species_climsen$high_climsen)
+hist(predictions_species_climsen$high.climsen, breaks = 100)
+summary(predictions_species_climsen$high.climsen)
 
 names(predictions_species_climsen)
 
 summary(predictions_species_climsen$bio11.mean)
 summary(predictions_species_climsen$aridity.mean)
-
-predictions_species_climsen_mod <- predictions_species_climsen |> 
-  rename(
-    bio11.mean.sp = bio11.mean,
-    aridity.mean.sp = aridity.mean
-  ) |> 
-  dplyr::select(
-    species.cor, tmt.plot.id, 
-    census.interval, plot.area,
-    high_climsen,
-    bio11.mean.sp, aridity.mean.sp
-  )
+summary(predictions_species_climsen$mean.wood.density)
+summary(predictions_species_climsen$mean.seed.dry.mass)
 
 # standardisation
-predictions_climsen_sd <- predictions_species_climsen_mod |> 
+predictions_climsen_std <- predictions_species_climsen |>
+    dplyr::select(
+    species.cor, tmt.plot.id, 
+    census.interval, plot.area,
+    high.climsen,
+    bio11.mean, aridity.mean,
+    mean.wood.density, mean.seed.dry.mass
+  ) |> 
   mutate(
-    bio11.mean.sp.nsd = bio11.mean.sp,
-    aridity.mean.sp.nsd = aridity.mean.sp,
-    across(c(bio11.mean.sp, aridity.mean.sp),
-           ~as.numeric(scale(.x, center = TRUE, scale = TRUE)))
+    across(c(bio11.mean, aridity.mean,
+             mean.wood.density, mean.seed.dry.mass),
+           ~as.numeric(scale(.x, center = TRUE, scale = TRUE)), .names = "{.col}.std")
   )
 
-summary(predictions_climsen_sd$bio11.mean.sp)
-summary(predictions_climsen_sd$aridity.mean.sp)
-summary(predictions_climsen_sd$high_climsen)
+summary(predictions_climsen_std$bio11.mean.std)
+summary(predictions_climsen_std$aridity.mean.std)
+summary(predictions_climsen_std$mean.wood.density.std)
+summary(predictions_climsen_std$mean.seed.dry.mass.std)
+summary(predictions_climsen_std$high.climsen)
 
 mod <- lmer(
-  high_climsen ~ (1|tmt.plot.id) +
+  high.climsen ~ (1|tmt.plot.id) +
     (1|species.cor) +
-    bio11.mean.sp + aridity.mean.sp,
-  data = as.data.frame(predictions_climsen_sd)
+    bio11.mean.std + aridity.mean.std + 
+    mean.wood.density.std + mean.seed.dry.mass.std,
+  data = as.data.frame(predictions_climsen_std)
 )
 
 summary(mod)
@@ -125,26 +141,30 @@ plot(simres)
 
 # lmer robustness diagnostic
 # a lm model calculating the mean change per species
-predictions_species_climsen_lm <- predictions_species_climsen_mod |> 
+predictions_species_climsen_sp <- predictions_species_climsen |> 
   group_by(species.cor) |> 
   summarise(
-    high_climsen_sp = mean(high_climsen, na.rm = T),
-    bio11.mean.sp = mean(bio11.mean.sp, na.rm = T),
-    aridity.mean.sp = mean(aridity.mean.sp, na.rm = T)
+    high.climsen.sp = mean(high.climsen, na.rm = T),
+    bio11.mean.sp = mean(bio11.mean, na.rm = T),
+    aridity.mean.sp = mean(aridity.mean, na.rm = T),
+    mean.wood.density.sp = mean(mean.wood.density, na.rm = T),
+    mean.seed.dry.mass.sp = mean(mean.seed.dry.mass, na.rm = T)
   )
 
 # standardisation
-predictions_climsen_lm_sd <- predictions_species_climsen_lm |> 
+predictions_species_climsen_sp_std <- predictions_species_climsen_sp |>
   mutate(
-    bio11.mean.sp.nsd = bio11.mean.sp,
-    aridity.mean.sp.nsd = aridity.mean.sp,
-    across(c(bio11.mean.sp, aridity.mean.sp),
-           ~as.numeric(scale(.x, center = TRUE, scale = TRUE)))
+    across(c(bio11.mean.sp, aridity.mean.sp,
+             mean.wood.density.sp, mean.seed.dry.mass.sp),
+           ~as.numeric(scale(.x, center = TRUE, scale = TRUE)), .names = "{.col}.std")
   )
 
 mod_lm <- lm(
-  high_climsen_sp ~ bio11.mean.sp + aridity.mean.sp,
-  data = as.data.frame(predictions_climsen_lm_sd)
+  high.climsen.sp ~ bio11.mean.sp.std + 
+    aridity.mean.sp.std +
+    mean.wood.density.sp.std +
+    mean.seed.dry.mass.sp.std,
+  data = as.data.frame(predictions_species_climsen_sp_std)
 )
 
 summary(mod_lm)
