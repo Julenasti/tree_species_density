@@ -5,8 +5,6 @@ editor_options:
   chunk_output_type: console
 ---
 
-PROBAR CON LOGS
-
 ```{=html}
 <style type="text/css">
 pre {
@@ -121,8 +119,16 @@ predictions_group <- predictions_species_climsen |>
 # standardisation
 predictions_group_std <- predictions_group |>
   mutate(
-    across(c(bio11.mean.sp, aridity.mean.sp,
-             mean.wood.density.sp, mean.seed.dry.mass.sp),
+    mean.wood.density.sp.log = log(mean.wood.density.sp),
+    aridity.mean.sp.log = log(aridity.mean.sp),
+    mean.seed.dry.mass.sp.log = log(mean.seed.dry.mass.sp),
+    across(c(bio11.mean.sp,
+             aridity.mean.sp,
+             aridity.mean.sp.log,
+             mean.wood.density.sp,
+             mean.wood.density.sp.log,
+             mean.seed.dry.mass.sp,
+             mean.seed.dry.mass.sp.log),
            \(x) as.numeric(scale(x, center = TRUE, scale = TRUE)), .names = "{.col}.std")
   )
 
@@ -132,11 +138,14 @@ summary(predictions_group_std$mean.wood.density.sp.std)
 summary(predictions_group_std$mean.seed.dry.mass.sp.std)
 summary(predictions_group_std$high.climsen.sp)
 
+summary(predictions_group_std$mean.seed.dry.mass.sp)
+summary(predictions_group_std$mean.seed.dry.mass.sp.std)
+
 mod_lm <- lm(
-  high.climsen.sp ~ bio11.mean.sp.std + 
-    aridity.mean.sp.std +
-    mean.wood.density.sp.std +
-    mean.seed.dry.mass.sp.std,
+  high.climsen.sp ~ bio11.mean.sp + 
+    aridity.mean.sp +
+    mean.wood.density.sp +
+    mean.seed.dry.mass.sp,
   data = as.data.frame(predictions_group_std)
 )
 
