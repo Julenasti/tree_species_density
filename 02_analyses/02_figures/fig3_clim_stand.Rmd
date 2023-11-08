@@ -193,11 +193,11 @@ gg_slab_sp_clim <- function(dat){
       )
 }
 
-fig2_intrasp_eu_clim <- gg_slab_sp_clim(pred_changes_l_rel_eu)
+fig3_intrasp_eu_clim <- gg_slab_sp_clim(pred_changes_l_rel_eu)
 
 ggsave(
-  plot = fig2_intrasp_eu_clim,
-  here("03_results", "figures", "fig2", "fig2_intrasp_eu.png"),
+  plot = fig3_intrasp_eu_clim,
+  here("03_results", "figures", "fig3", "fig3_intrasp_eu.png"),
   width = 8, height = 8,
   dpi = 600
 )
@@ -235,14 +235,14 @@ v_pred_us_all <- c(
 
 walk2(gg_pred_us_all, v_pred_us_all, \(x, y) ggsave(
   plot = x,
-  filename = here("03_results", "figures", "fig2", y),
+  filename = here("03_results", "figures", "fig3", y),
   width = 8, height = 8,
   dpi = 600
   ))
 
 ```
 
-```{r fig2_main}
+```{r fig3_main}
 
 # species
 pred_changes_l_rel_sp <- pred_changes_l_rel |> 
@@ -371,7 +371,7 @@ gg_sensitivity_hist <- function(df, text_mean) {
               color = "grey40")
 }
 
-fig2_hist <- gg_sensitivity_hist(
+fig3_hist <- gg_sensitivity_hist(
   df = pred_all_changes_w_l_rel,
   text_mean = df_text_mean
 ) +
@@ -383,13 +383,13 @@ fig2_hist <- gg_sensitivity_hist(
   labs(tag = "(B)")
 
 ggsave(
-  plot = fig2_hist,
-  here("03_results", "figures", "fig2", "fig2_hist.png"),
+  plot = fig3_hist,
+  here("03_results", "figures", "fig3", "fig3_hist.png"),
   width = 8, height = 2.1,
   dpi = 600
 )
 
-fig2_slab <- (gg_slab_sp_clim(dat = pred_changes_l_rel_sp) +
+fig3_slab <- (gg_slab_sp_clim(dat = pred_changes_l_rel_sp) +
                 theme(plot.margin = margin(0, 2, 0, 0, "cm"),
                       legend.text = element_text(color = "black", size = 10),
                       strip.text = element_text(color = "black", size = 10),
@@ -401,25 +401,25 @@ fig2_slab <- (gg_slab_sp_clim(dat = pred_changes_l_rel_sp) +
   plot_layout(heights = c(4, 2))
 
 ggsave(
-  plot = fig2_slab,
-  here("03_results", "figures", "fig2", "fig2_slab.png"),
+  plot = fig3_slab,
+  here("03_results", "figures", "fig3", "fig3_slab.png"),
   width = 10, height = 8.2,
   dpi = 600
 )
 
-fig2_hist_m <- image_read(here("03_results", "figures", "fig2", "fig2_hist.png"))
+fig3_hist_m <- image_read(here("03_results", "figures", "fig3", "fig3_hist.png"))
 
-fig2_slab_m <- image_read(here("03_results", "figures", "fig2", "fig2_slab.png"))
+fig3_slab_m <- image_read(here("03_results", "figures", "fig3", "fig3_slab.png"))
 
-fig2_main_m <- image_composite(
-  fig2_slab_m, fig2_hist_m,
+fig3_main_m <- image_composite(
+  fig3_slab_m, fig3_hist_m,
   offset = "+830+3650"
   )
 
-fig2_main_m
+fig3_main_m
 
-image_write(fig2_main_m, here(
-  "03_results", "figures", "fig2", "fig2_main.png"
+image_write(fig3_main_m, here(
+  "03_results", "figures", "fig3", "fig3_main.png"
 ), density = 600)
 
 ```

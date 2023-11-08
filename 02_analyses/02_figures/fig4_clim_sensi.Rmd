@@ -1,5 +1,5 @@
 ---
-title: "Quantify the effect of species minimum temperature and aridity on species climatic sensitivity"
+title: "Quantify the effect of species minimum temperature, aridity and traits on species climatic sensitivity"
 output: github_document
 editor_options: 
   chunk_output_type: console
@@ -116,74 +116,58 @@ predictions_group <- predictions_species_climsen |>
     mean.seed.dry.mass.sp = mean(mean.seed.dry.mass, na.rm = T)
   )
 
-# standardisation
-predictions_group_std <- predictions_group |>
-  mutate(
-    mean.wood.density.sp.log = log(mean.wood.density.sp),
-    aridity.mean.sp.log = log(aridity.mean.sp),
-    mean.seed.dry.mass.sp.log = log(mean.seed.dry.mass.sp),
-    across(c(bio11.mean.sp,
-             aridity.mean.sp,
-             aridity.mean.sp.log,
-             mean.wood.density.sp,
-             mean.wood.density.sp.log,
-             mean.seed.dry.mass.sp,
-             mean.seed.dry.mass.sp.log),
-           \(x) as.numeric(scale(x, center = TRUE, scale = TRUE)), .names = "{.col}.std")
-  )
-
-summary(predictions_group_std$bio11.mean.sp.std)
-summary(predictions_group_std$aridity.mean.sp.std)
-summary(predictions_group_std$mean.wood.density.sp.std)
-summary(predictions_group_std$mean.seed.dry.mass.sp.std)
-summary(predictions_group_std$high.climsen.sp)
-
-summary(predictions_group_std$mean.seed.dry.mass.sp)
-summary(predictions_group_std$mean.seed.dry.mass.sp.std)
-
 mod_lm <- lm(
   high.climsen.sp ~ bio11.mean.sp + 
     aridity.mean.sp +
     mean.wood.density.sp +
     mean.seed.dry.mass.sp,
-  data = as.data.frame(predictions_group_std)
+  data = as.data.frame(predictions_group)
 )
 
 summary(mod_lm)
 
 simres <- simulateResiduals(mod_lm)
+
 x11()
 par(mfrow = c(2, 2))
-plot(simres)
+
+plotResiduals(simres,
+              predictions_group$bio11.mean.sp)
+plotResiduals(simres,
+              predictions_group$aridity.mean.sp)
+plotResiduals(simres,
+              predictions_group$mean.wood.density.sp)
+plotResiduals(simres,
+              predictions_group$mean.seed.dry.mass.sp)
 
 ```
 
-```{r fig3_main}
+```{r fig4_main}
 
 predict_tmin <- ggpredict(
   model = mod_lm, 
-  terms = "bio11.mean.sp.std",
+  terms = "bio11.mean.sp",
   type = "fixed",
   ci.lvl = 0.68
 )
 
 predict_aridity <- ggpredict(
   model = mod_lm, 
-  terms = "aridity.mean.sp.std [-2.5:6.5]",
+  terms = "aridity.mean.sp",
   type = "fixed",
   ci.lvl = 0.68
 )
 
 predict_wd <- ggpredict(
   model = mod_lm, 
-  terms = "mean.wood.density.sp.std",
+  terms = "mean.wood.density.sp",
   type = "fixed",
   ci.lvl = 0.68
 )
 
 predict_sdm <- ggpredict(
   model = mod_lm, 
-  terms = "mean.seed.dry.mass.sp.std [-1:5]",
+  terms = "mean.seed.dry.mass.sp",
   type = "fixed",
   ci.lvl = 0.68
 )
@@ -191,15 +175,13 @@ predict_sdm <- ggpredict(
 plot_ggeffects_lm <- function(pred, xlab){
   plot(
     pred, add.data = T,
-    alpha = .15
+    alpha = .15,
+    jitter = NULL
     ) +
     geom_hline(yintercept = 0, linetype = "dashed", color = "grey20") +
     labs(
       y = expression(atop("Climatic sensitivity (Cold & wet - Warm & arid)", "Annual change n. stems per hectare")),
       x = xlab,
-      ) +
-    coord_cartesian(
-      ylim = c(-2.5, 2.5),
       ) +
     theme(
       panel.grid.major = element_line(colour = "grey90", linewidth = 0.5),
@@ -211,20 +193,6 @@ plot_ggeffects_lm <- function(pred, xlab){
   ggtitle("")
 }
 
-# reverse transformation
-# https://ourcodingclub.github.io/tutorials/data-scaling/
-scaled_rev_bio11_lm <- predict_tmin[["x"]] * sd(predictions_group_std$bio11.mean.sp) +
-  mean(predictions_group_std$bio11.mean.sp)
-
-scaled_rev_aridity_lm <- predict_aridity[["x"]] * sd(predictions_group_std$aridity.mean.sp) +
-  mean(predictions_group_std$aridity.mean.sp)
-
-scaled_rev_wd_lm <- predict_wd[["x"]] * sd(predictions_group_std$mean.wood.density.sp) +
-  mean(predictions_group_std$mean.wood.density.sp)
-
-scaled_rev_sdm_lm <- predict_sdm[["x"]] * sd(predictions_group_std$mean.seed.dry.mass.sp) +
-  mean(predictions_group_std$mean.seed.dry.mass.sp)
-
 plot_tmin <- plot_ggeffects_lm(predict_tmin, "Minimum temperature niche position")
 
 plot_aridity <- plot_ggeffects_lm(predict_aridity, "Aridity niche position")
@@ -234,14 +202,15 @@ plot_wd <- plot_ggeffects_lm(predict_wd, "Wood density")
 plot_sdm <- plot_ggeffects_lm(predict_sdm, "Seed dry mass")
 
 all_plot_ggeffects_lm <- plot_tmin + 
+  coord_cartesian(ylim = c(-2.5, 2.5)) +
   scale_x_continuous(
-    breaks = plot_tmin$data$x[c(1, 3, 5, 7, 9, 11)],
-    labels = round(scaled_rev_bio11_lm[c(1, 3, 5, 7, 9, 11)], 1)
+    name = "Minimum temperature niche position (ºC)"
   ) +
   plot_aridity + 
+  coord_cartesian(xlim = c(0, 2.6),
+                  ylim = c(-2.5, 2.5)) +
   scale_x_continuous(
-    breaks = plot_aridity$data$x[c(1, 3, 5, 7, 9)],
-    labels = round(scaled_rev_aridity_lm[c(1, 3, 5, 7, 9)], 1)
+    name = "Aridity niche position (aridity index)"
   ) +
   theme(
     axis.title.y = element_blank(),
@@ -249,14 +218,15 @@ all_plot_ggeffects_lm <- plot_tmin +
     axis.ticks.y = element_blank()
   ) +
   plot_wd + 
+  coord_cartesian(xlim = c(0, 1),
+                  ylim = c(-2.5, 2.5)) +
   scale_x_continuous(
-    breaks = plot_wd$data$x[c(1, 5, 9, 13)],
-    labels = round(scaled_rev_wd_lm[c(1, 5, 9, 13)], 1)
+    name = (bquote("Wood density "(g/cm^3)))
   ) +
-  plot_sdm + 
+  plot_sdm +
+  coord_cartesian(ylim = c(-2.5, 2.5)) +
   scale_x_continuous(
-    breaks = plot_sdm$data$x[c(1, 3, 5, 7)],
-    labels = round(scaled_rev_sdm_lm[c(1, 3, 5, 7)], 1)
+    name = "Seed dry mass (mg)"
   ) +
   theme(
     axis.title.y = element_blank(),
@@ -270,7 +240,7 @@ all_plot_ggeffects_lm
 
 ggsave(
   plot = all_plot_ggeffects_lm,
-  here("03_results", "figures", "fig3", "fig3_main.png"),
+  here("03_results", "figures", "fig4", "fig4_main2.png"),
   width = 9, height = 8,
   dpi = 600
 )
@@ -345,10 +315,10 @@ plot_ggeffects_lmer <- function(pred, xlab){
 }
 
 xlab_v_lmer <- c(
-  "Minimum temperature niche position",
-  "Aridity niche position",
-  "Wood density",
-  "Seed dry mass"
+  "Minimum temperature niche position (ºC)",
+  "Aridity niche position (aridity index)",
+  (bquote("Wood density "(g/cm^3))),
+  "Seed dry mass (mg)"
 )
 
 arg2_pred_xlab_v_lmer <- list(
@@ -359,6 +329,8 @@ arg2_pred_xlab_v_lmer <- list(
 all_plot_ggeffects_lmer <- arg2_pred_xlab_v_lmer |> 
   pmap(plot_ggeffects_lmer)
 
+# reverse transformation
+# https://ourcodingclub.github.io/tutorials/data-scaling/
 scaled_rev_bio11_lmer <- predictions_lmer[[1]][["x"]] * sd(predictions_climsen_std$bio11.mean) +
   mean(predictions_climsen_std$bio11.mean)
 
@@ -398,7 +370,7 @@ all_plot_ggeffects_lmer
   
 ggsave(
   plot = all_plot_ggeffects_lmer,
-  here("03_results", "figures", "fig3", "fig3_lmer.png"),
+  here("03_results", "figures", "fig4", "fig4_lmer.png"),
   width = 9, height = 8,
   dpi = 600
 )

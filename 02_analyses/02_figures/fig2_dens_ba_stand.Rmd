@@ -1,0 +1,264 @@
+---
+title: "Quantify the relationship between changes in species abundance and mean tree size adjusting for stand development"
+output: github_document
+editor_options: 
+  chunk_output_type: console
+---
+
+<style type="text/css">
+pre {
+  font-size: 10px
+}
+</style>
+
+```{r setup, include = F}
+
+knitr::opts_chunk$set(eval = T, echo = TRUE, message = F, warning = F, out.width = "100%")
+
+library(here)
+library(tidyverse)
+library(patchwork)
+library(ggdist)
+library(ggrepel)
+
+```
+
+```{r read}
+
+data_model <- readRDS(file = here("01_data", "data_model.rds"))
+
+data_model_chan <- data_model |> 
+  mutate(
+    region = if_else(
+      country == "US", "US", "Europe"
+    ),
+    n.plot_changes = (n.plot - n.plot0) /
+      census.interval / plot.area,
+    mean.ba.ind_changes = (mean.ba.ind - mean.ba.ind0) / 
+      census.interval
+  )
+
+summary(data_model_chan$n.plot_changes)
+summary(data_model_chan$mean.ba.ind_changes)
+
+```
+
+```{r group_species}
+
+species_ba_changes <- data_model_chan |> 
+  group_by(species.cor) |> 
+  summarise(
+    mean_sp_mean_ba_ind0 = mean(
+      mean.ba.ind0, na.rm = T
+      ),
+    mean_sp_mean_ba_ind = mean(
+      mean.ba.ind, na.rm = T
+      ),
+    mean_sp_mean_ba_ind_changes = mean(
+      mean.ba.ind_changes, na.rm = T
+      ),
+    mean_sp_n_plot_changes = mean(
+      n.plot_changes, na.rm = T
+      ),
+    region = first(region)
+  )
+
+nrow(data_model_chan)
+
+# filter datasets
+data_model_chan_early <- data_model_chan |> 
+  filter(for.dev <= 0.25)
+
+nrow(data_model_chan_early)
+
+data_model_chan_late <- data_model_chan |> 
+  filter(for.dev >= 0.65)
+
+nrow(data_model_chan_late)
+
+# group at species level
+data_ls <- list(
+  data_model_chan,
+  data_model_chan_early,
+  data_model_chan_late
+  
+)
+
+mutate_name <- function(df, names_stand) {
+  df |> 
+    dplyr::mutate(
+      stand_dev = names_stand
+    )
+}
+
+names_stand_v <- c(
+  "All data", "Early stand development",
+  "Late stand development"
+)
+
+arg2_df_names_stand <- list(
+  df = data_ls,
+  names_stand = names_stand_v
+)
+
+data_ls_m <- arg2_df_names_stand |> 
+  pmap(mutate_name)
+
+group_by_species <- function(df) {
+  df |> 
+    group_by(species.cor) |> 
+    summarise(
+      mean_sp_mean_ba_ind_changes = mean(
+        mean.ba.ind_changes, na.rm = T
+      ),
+      mean_sp_n_plot_changes = mean(
+        n.plot_changes, na.rm = T
+      ),
+      region = first(region),
+      stand_dev = first(stand_dev)
+    )
+}
+
+data_species <- map_df(data_ls_m, \(x) group_by_species(x))
+
+table(data_species$stand_dev)
+
+```
+
+```{r plot}
+
+# plot
+species_selected <- c(
+  "Acer rubrum",
+  "Abies concolor",
+  "Pinus ponderosa",
+  "Populus tremuloides",
+  "Pinus echinata",
+  "Pinus sylvestris",
+  "Picea abies",
+  "Fagus sylvatica",
+  "Quercus robur",
+  "Quercus ilex"
+)
+
+data_species_names <- data_species |> 
+  mutate(
+    mean_sp_mean_ba_ind_changes_cm = mean_sp_mean_ba_ind_changes / 100,
+    species_label = if_else(
+      species.cor %in% species_selected, species.cor, ""
+    )
+  )
+
+# get the mean of all species for each stan dev
+# all
+mean_all_n_plot_changes <- mean(data_ls_m[[1]]$n.plot_changes, na.rm = T)
+mean_all_ba_ind_changes_cm <- mean(data_ls_m[[1]]$mean.ba.ind_changes, na.rm = T) / 100
+
+# early
+mean_early_n_plot_changes <- mean(data_ls_m[[2]]$n.plot_changes, na.rm = T)
+mean_early_ba_ind_changes_cm <- mean(data_ls_m[[2]]$mean.ba.ind_changes, na.rm = T) / 100
+
+# late
+mean_late_n_plot_changes <- mean(data_ls_m[[3]]$n.plot_changes, na.rm = T)
+mean_late_ba_ind_changes_cm <- mean(data_ls_m[[3]]$mean.ba.ind_changes, na.rm = T) / 100
+
+names(data_species_names)
+
+# all
+data_all_all <- tibble(
+  species.cor = NA_character_,
+  mean_sp_mean_ba_ind_changes = NA_real_,
+  mean_sp_n_plot_changes = mean_all_n_plot_changes,
+  region = NA_character_,
+  stand_dev = "All data",
+  mean_sp_mean_ba_ind_changes_cm = mean_all_ba_ind_changes_cm,
+  species_label = ""
+)
+
+# early
+data_all_early <- tibble(
+  species.cor = NA_character_,
+  mean_sp_mean_ba_ind_changes = NA_real_,
+  mean_sp_n_plot_changes = mean_early_n_plot_changes,
+  region = NA_character_,
+  stand_dev = "Early stand development",
+  mean_sp_mean_ba_ind_changes_cm = mean_early_ba_ind_changes_cm,
+  species_label = ""
+)
+
+# late
+data_all_late <- tibble(
+  species.cor = NA_character_,
+  mean_sp_mean_ba_ind_changes = NA_real_,
+  mean_sp_n_plot_changes = mean_late_n_plot_changes,
+  region = NA_character_,
+  stand_dev = "Late stand development",
+  mean_sp_mean_ba_ind_changes_cm = mean_late_ba_ind_changes_cm,
+  species_label = ""
+)
+
+data_species_names_all <- bind_rows(
+  data_species_names, 
+  data_all_all, 
+  data_all_early,
+  data_all_late
+)
+
+summary(data_species_names_all$mean_sp_n_plot_changes)
+summary(data_species_names_all$mean_sp_mean_ba_ind_changes_cm)
+
+set.seed(42)
+gg_stand_dev <- ggplot(
+  data_species_names_all,
+  aes(x = mean_sp_n_plot_changes,
+      y = mean_sp_mean_ba_ind_changes_cm,
+      label = species_label)
+  ) +
+  geom_hline(aes(yintercept = 0),
+             linetype = "dashed",
+             colour = "black", linewidth = .5) +
+  geom_vline(aes(xintercept = 0),
+             linetype = "dashed",
+             colour = "black", linewidth = .5) +
+  geom_point(
+    color = case_when(
+      data_species_names_all$species.cor %in% data_species_names_all$species_label ~ "firebrick",
+      is.na(data_species_names_all$species.cor) ~ "#FFC20A",
+      T ~ "grey50"
+    ),
+    alpha = if_else(
+      is.na(data_species_names_all$species.cor), .9, .7
+    ),
+    size = if_else(
+      is.na(data_species_names_all$species.cor), 4, 2
+    )
+  ) +
+  geom_text_repel(max.overlaps = Inf, 
+                  size = 2.5,
+                  fontface = "italic") +
+  scale_y_continuous(
+    name = (bquote("Annual change mean tree basal area  "(cm^2)))
+  ) +
+  scale_x_continuous(
+    name = "Annual change n. stems per hectare",
+  ) +
+  facet_grid(. ~ stand_dev) +
+  coord_cartesian(xlim = c(-31, 27),
+                  ylim = c(-2, 30)) +
+  theme(
+    panel.grid.major = element_line(colour = "grey90", linewidth = 0.5),
+    panel.background = element_blank(),
+    axis.text = element_text(size = 10, colour = "black"),
+    legend.position = "none",
+    axis.title = element_text(size = 10, colour = "black"),
+  )
+
+ggsave(
+  plot = gg_stand_dev,
+  here("03_results", "figures", "fig2", "fig2_main.png"),
+  width = 8, height = 4,
+  dpi = 600
+)
+
+```
+
