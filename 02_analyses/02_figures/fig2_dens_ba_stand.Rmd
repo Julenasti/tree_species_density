@@ -71,6 +71,12 @@ data_model_chan_early <- data_model_chan |>
 
 nrow(data_model_chan_early)
 
+data_model_chan_mid <- data_model_chan |> 
+  filter(for.dev > 0.25 & for.dev < 0.65)
+
+nrow(data_model_chan_mid)
+summary(data_model_chan_mid$for.dev)
+
 data_model_chan_late <- data_model_chan |> 
   filter(for.dev >= 0.65)
 
@@ -80,6 +86,7 @@ nrow(data_model_chan_late)
 data_ls <- list(
   data_model_chan,
   data_model_chan_early,
+  data_model_chan_mid,
   data_model_chan_late
   
 )
@@ -92,7 +99,9 @@ mutate_name <- function(df, names_stand) {
 }
 
 names_stand_v <- c(
-  "All data", "Early stand development",
+  "All data", 
+  "Early stand development",
+  "Mid stand development",
   "Late stand development"
 )
 
@@ -158,9 +167,13 @@ mean_all_ba_ind_changes_cm <- mean(data_ls_m[[1]]$mean.ba.ind_changes, na.rm = T
 mean_early_n_plot_changes <- mean(data_ls_m[[2]]$n.plot_changes, na.rm = T)
 mean_early_ba_ind_changes_cm <- mean(data_ls_m[[2]]$mean.ba.ind_changes, na.rm = T) / 100
 
+# mid
+mean_mid_n_plot_changes <- mean(data_ls_m[[3]]$n.plot_changes, na.rm = T)
+mean_mid_ba_ind_changes_cm <- mean(data_ls_m[[3]]$mean.ba.ind_changes, na.rm = T) / 100
+
 # late
-mean_late_n_plot_changes <- mean(data_ls_m[[3]]$n.plot_changes, na.rm = T)
-mean_late_ba_ind_changes_cm <- mean(data_ls_m[[3]]$mean.ba.ind_changes, na.rm = T) / 100
+mean_late_n_plot_changes <- mean(data_ls_m[[4]]$n.plot_changes, na.rm = T)
+mean_late_ba_ind_changes_cm <- mean(data_ls_m[[4]]$mean.ba.ind_changes, na.rm = T) / 100
 
 names(data_species_names)
 
@@ -186,6 +199,17 @@ data_all_early <- tibble(
   species_label = ""
 )
 
+# mid
+data_all_mid <- tibble(
+  species.cor = NA_character_,
+  mean_sp_mean_ba_ind_changes = NA_real_,
+  mean_sp_n_plot_changes = mean_mid_n_plot_changes,
+  region = NA_character_,
+  stand_dev = "Mid stand development",
+  mean_sp_mean_ba_ind_changes_cm = mean_mid_ba_ind_changes_cm,
+  species_label = ""
+)
+
 # late
 data_all_late <- tibble(
   species.cor = NA_character_,
@@ -201,6 +225,7 @@ data_species_names_all <- bind_rows(
   data_species_names, 
   data_all_all, 
   data_all_early,
+  data_all_mid,
   data_all_late
 )
 
@@ -208,6 +233,7 @@ summary(data_species_names_all$mean_sp_n_plot_changes)
 summary(data_species_names_all$mean_sp_mean_ba_ind_changes_cm)
 
 set.seed(42)
+
 gg_stand_dev <- ggplot(
   data_species_names_all,
   aes(x = mean_sp_n_plot_changes,
@@ -235,14 +261,22 @@ gg_stand_dev <- ggplot(
   ) +
   geom_text_repel(max.overlaps = Inf, 
                   size = 2.5,
-                  fontface = "italic") +
+                  fontface = "italic",
+                  force = 1,
+                  box.padding = .2) +
   scale_y_continuous(
     name = (bquote("Annual change mean tree basal area  "(cm^2)))
   ) +
   scale_x_continuous(
     name = "Annual change n. stems per hectare",
   ) +
-  facet_grid(. ~ stand_dev) +
+  facet_grid(. ~ factor(
+    stand_dev, levels = c(
+      "All data", 
+      "Early stand development",
+      "Mid stand development",
+      "Late stand development"
+    ))) +
   coord_cartesian(xlim = c(-31, 27),
                   ylim = c(-2, 30)) +
   theme(
@@ -261,4 +295,3 @@ ggsave(
 )
 
 ```
-
