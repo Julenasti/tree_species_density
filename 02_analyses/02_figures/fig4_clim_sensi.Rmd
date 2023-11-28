@@ -95,7 +95,8 @@ predictions_species_climsen <- left_join(
 ```{r lm_model}
 
 # response variable distributions
-hist(predictions_species_climsen$high.climsen, breaks = 100)
+hist(predictions_species_climsen$high.climsen, breaks = 500)
+
 summary(predictions_species_climsen$high.climsen)
 
 names(predictions_species_climsen)
@@ -116,11 +117,18 @@ predictions_group <- predictions_species_climsen |>
     mean.seed.dry.mass.sp = mean(mean.seed.dry.mass, na.rm = T)
   )
 
+predictions_group <- predictions_group |> 
+  mutate(
+    aridity.mean.sp.l = log(predictions_group$aridity.mean.sp),
+    mean.wood.density.sp.l = log(predictions_group$mean.wood.density.sp),
+    mean.seed.dry.mass.sp.l = log(predictions_group$mean.seed.dry.mass.sp)
+  )
+
 mod_lm <- lm(
   high.climsen.sp ~ bio11.mean.sp + 
-    aridity.mean.sp +
-    mean.wood.density.sp +
-    mean.seed.dry.mass.sp,
+    aridity.mean.sp.l +
+    mean.wood.density.sp.l +
+    mean.seed.dry.mass.sp.l,
   data = as.data.frame(predictions_group)
 )
 
@@ -153,21 +161,21 @@ predict_tmin <- ggpredict(
 
 predict_aridity <- ggpredict(
   model = mod_lm, 
-  terms = "aridity.mean.sp",
+  terms = "aridity.mean.sp.l",
   type = "fixed",
   ci.lvl = 0.68
 )
 
 predict_wd <- ggpredict(
   model = mod_lm, 
-  terms = "mean.wood.density.sp",
+  terms = "mean.wood.density.sp.l",
   type = "fixed",
   ci.lvl = 0.68
 )
 
 predict_sdm <- ggpredict(
   model = mod_lm, 
-  terms = "mean.seed.dry.mass.sp",
+  terms = "mean.seed.dry.mass.sp.l",
   type = "fixed",
   ci.lvl = 0.68
 )
@@ -207,10 +215,10 @@ all_plot_ggeffects_lm <- plot_tmin +
     name = "Minimum temperature niche position (ºC)"
   ) +
   plot_aridity + 
-  coord_cartesian(xlim = c(0, 2.6),
-                  ylim = c(-2.5, 2.5)) +
+  coord_cartesian(ylim = c(-2.5, 2.5)) +
   scale_x_continuous(
-    name = "Aridity niche position (aridity index)"
+    name = "log(aridity niche position)"
+    # name = "Aridity niche position (aridity index)"
   ) +
   theme(
     axis.title.y = element_blank(),
@@ -218,15 +226,16 @@ all_plot_ggeffects_lm <- plot_tmin +
     axis.ticks.y = element_blank()
   ) +
   plot_wd + 
-  coord_cartesian(xlim = c(0, 1),
-                  ylim = c(-2.5, 2.5)) +
+  coord_cartesian(ylim = c(-2.5, 2.5)) +
   scale_x_continuous(
-    name = (bquote("Wood density "(g/cm^3)))
+    name = "log(wood density)"
+    # name = (bquote("Wood density "(g/cm^3)))
   ) +
   plot_sdm +
   coord_cartesian(ylim = c(-2.5, 2.5)) +
   scale_x_continuous(
-    name = "Seed dry mass (mg)"
+    name = "log(seed dry mass)"
+    # name = "Seed dry mass (mg)"
   ) +
   theme(
     axis.title.y = element_blank(),
@@ -240,7 +249,7 @@ all_plot_ggeffects_lm
 
 ggsave(
   plot = all_plot_ggeffects_lm,
-  here("03_results", "figures", "fig4", "fig4_main2.png"),
+  here("03_results", "figures", "fig4", "fig4_main.png"),
   width = 9, height = 8,
   dpi = 600
 )

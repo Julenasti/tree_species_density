@@ -22,6 +22,8 @@ library(testthat)
 library(terra)
 library(fs)
 library(gt)
+library(lme4)
+library(lattice)
 
 ```
 
@@ -41,6 +43,10 @@ data_model_chan <- data_model |>
 # n. of trees
 # sum(data_model_chan$n.plot0)
 # sum(data_model_chan$n.plot)
+
+# mean values per hectare
+# round(mean(data_model_chan$n.plot0  / data_model_chan$plot.area))
+# round(mean(data_model_chan$n.plot / data_model_chan$plot.area))
 
 ```
 
@@ -666,6 +672,291 @@ table_S2
 
 # gtsave(table_S2, "table_S2.rtf", 
 #        path = here("04-results", "tables"))
+
+```
+
+```{r important_changes}
+
+# get the climatic region of each species
+
+get_climatic_region <- function(dat){
+  
+  arid_q <- as.vector(quantile(probs = c(0.33, 0.66), dat$aridity))
+  
+  arid_q_33 <- arid_q[1]
+  arid_q_66 <- arid_q[2]
+  
+  bio11_q <- as.vector(quantile(probs = c(0.33, 0.66), dat$bio11))
+  
+  bio11_q_33 <- bio11_q[1]
+  bio11_q_66 <- bio11_q[2]
+
+  dat_q <- dat |>
+    mutate(
+      arid_q = case_when(
+        aridity < arid_q_33 ~ 1, # arid
+        aridity >= arid_q_66 ~ 3, # wet
+        T ~ 2 # mid
+        ),
+      bio11_q = case_when(
+        bio11 < bio11_q_33 ~ 1, # cold
+        bio11 >= bio11_q_66 ~ 3, # warm
+        T ~ 2 # mid
+        )
+    )
+
+  table(dat_q$arid_q)
+  table(dat_q$bio11_q)
+
+  data_rast <- rast(
+    nrows = 3, ncols = 3,
+    ymin = min(dat_q$arid_q),
+    ymax = max(dat_q$arid_q),
+    xmin = min(dat_q$bio11_q),
+    xmax = max(dat_q$bio11_q)
+    )
+  
+  # get the mean of each species performance in each cell
+  raster_extent <- as.vector(ext(data_rast))
+  
+  raster_extent_tb <- tibble(
+    bio11_min = raster_extent[1],
+    bio11_max = raster_extent[2],
+    aridity_min = raster_extent[3],
+    aridity_max = raster_extent[4]
+    ) |> 
+    mutate(
+      cell_size = (bio11_max - bio11_min) / 3
+      )
+  
+  diag_values <- tibble(
+    bio11 = c(raster_extent_tb$bio11_min, 
+              raster_extent_tb$bio11_min +
+                raster_extent_tb$cell_size,
+              raster_extent_tb$bio11_min +
+                raster_extent_tb$cell_size * 2,
+              raster_extent_tb$bio11_min +
+                raster_extent_tb$cell_size * 3
+              ),
+    aridity = c(raster_extent_tb$aridity_min, 
+              raster_extent_tb$aridity_min +
+                raster_extent_tb$cell_size,
+              raster_extent_tb$aridity_min +
+                raster_extent_tb$cell_size * 2,
+              raster_extent_tb$aridity_min +
+                raster_extent_tb$cell_size * 3
+              )
+  )
+  
+  # diag_values
+  
+  bio11_q33 <- diag_values$bio11[2]
+  bio11_q66 <- diag_values$bio11[3]
+  aridity_q33 <- diag_values$aridity[2]
+  aridity_q66 <- diag_values$aridity[3]
+  
+ dat_q_cell <- dat_q |> 
+    mutate(
+      cell = case_when(
+        bio11_q <= bio11_q33 &
+          arid_q <= aridity_q33 ~ 7,
+        bio11_q >= bio11_q66 & 
+          arid_q >= aridity_q66 ~ 3,
+        bio11_q <= bio11_q33 & 
+          arid_q >= aridity_q66 ~ 1,
+        bio11_q >= bio11_q66 & 
+          arid_q <= aridity_q33 ~ 9,
+        bio11_q <= bio11_q33 & 
+          (arid_q >= aridity_q33 &
+          arid_q <= aridity_q66) ~ 4,
+        bio11_q >= bio11_q66 & 
+          (arid_q >= aridity_q33 &
+          arid_q <= aridity_q66) ~ 6,
+        arid_q <= aridity_q33 & 
+          (bio11_q >= bio11_q33 &
+          bio11_q <= bio11_q66) ~ 8,
+        arid_q >= aridity_q66 & 
+          (bio11_q >= bio11_q33 &
+          bio11_q <= bio11_q66) ~ 2,
+        T ~ 5
+        )
+    )
+  
+  # table(dat_q_cell$cell)
+  
+}
+
+data_model_chan_region <- data_model_chan |>  
+  group_by(species.cor) |> 
+  nest() |> 
+  mutate(
+    climatic_region = map(data, \(x) get_climatic_region(dat = x))
+  )
+
+data_region <- data_model_chan_region |> 
+  select(species.cor, climatic_region) |> 
+  unnest(climatic_region)
+
+table(data_region$cell, data_region$species.cor)
+
+# fit a model for each climatic region
+data_region_mixed <- data_region |>  
+  group_by(cell) |> 
+  nest() |> 
+  mutate(
+    lmer_model = map(data, \(x) lmer(n.plot_changes ~ (1|tmt.plot.id) + (1|species.cor), data = x))
+  )
+
+data_region_mixed_ar <- data_region_mixed |> 
+  arrange(cell)
+
+# check fixed effects: https://rdrr.io/cran/lme4/man/fixef.html
+# very similar to those in fig 1, cool!
+data_region_mixed_ar |> 
+  pluck("lmer_model") |>
+  map_vec(\(x) fixef(x))
+
+# check random effects:
+# https://rdrr.io/cran/lme4/man/ranef.html
+data_region_mixed_random <- data_region_mixed_ar |> 
+  pluck("lmer_model") |> 
+  map(\(x) ranef(x))
+
+length(data_region_mixed_random)
+
+# condval: value of the conditional mean
+# condsd: conditional standard deviation
+data_region_mixed_random_sp <- data_region_mixed_random |> 
+  map(\(x) as_tibble(x)) |> 
+  map(\(x) filter(x, grpvar == "species.cor"))
+
+data_region_ci <- data_region_mixed_random_sp |> 
+  map(\(x) mutate(x, lci = condval - 1.96 * condsd,
+                  uci = condval + 1.96 * condsd)) 
+
+# identify significant changes
+overlap <- function(dat, x) {
+  between(0, dat[["lci"]][[x]], dat[["uci"]][[x]])
+}
+
+data_region_signi <- map(data_region_ci, \(clim_reg) map_vec(seq_along(unique(data_model_chan_region$species.cor)), \(sp) overlap(dat = clim_reg, x = sp)))
+
+data_region_ci_signi <- map(seq_along(data_region_ci), \(x) bind_cols(data_region_ci[[x]], overlap = data_region_signi[[x]]))
+
+# number of species showing significant
+# changes in abundance
+data_region_signi_sp <- map(data_region_ci_signi, \(x) count(x, overlap))
+
+data_region_signi_sp_cell <- map2(data_region_signi_sp, 1:9, \(x, y) mutate(x, cell = y))
+
+# species showing significant 
+# decreases in abundance
+all_negative <- function(dat, x) {
+  if_else(dat[["lci"]][[x]] < 0 & dat[["uci"]][[x]] < 0, T, F)
+}
+
+data_region_signi_decrease <- map(data_region_ci_signi, \(clim_reg) map_vec(seq_along(unique(data_model_chan_region$species.cor)), \(sp) all_negative(dat = clim_reg, x = sp)))
+
+data_region_ci_signi_decrease <- map(seq_along(data_region_ci), \(x) bind_cols(data_region_ci_signi[[x]], decrease = data_region_signi_decrease[[x]]))
+
+data_region_signi_decrease_filter <- 
+  map(data_region_ci_signi_decrease, \(x) filter(x, overlap == "FALSE"))
+
+data_region_signi_decrease_sp <- map(data_region_signi_decrease_filter, \(x) count(x, decrease))
+
+data_region_signi_decrease_sp_cell <- map2_df(data_region_signi_decrease_sp, 1:9, \(x, y) mutate(x, cell = y))
+
+# View(data_region_signi_decrease_filter)
+
+# table
+table_S2 <- data_region_signi_decrease_sp_cell |> 
+  mutate(cell2 = cell,
+         cell = case_when(
+           cell == "1" ~ "1 (Cold & wet)",
+           cell == "3" ~ "3 (Warm & wet)",
+           cell == "7" ~ "7 (Cold & arid)",
+           cell == "9" ~ "9 (Warm & arid)",
+           T ~ as.character(cell)
+         ),
+         decrease = case_when(
+           decrease == "TRUE" ~ "Decrease",
+           decrease == "FALSE" ~ "Increase"
+         )
+  ) |>
+  select(cell, decrease, n) |> 
+  gt(
+    groupname_col = "cell2"
+  ) |>
+  cols_label(
+    n = "N. species",
+    decrease = "Change in abundance",
+    cell = "Cell"
+  ) |> 
+  tab_style(
+    style = list(
+      cell_text(weight = "bold")
+    ),
+    locations = list(
+      cells_column_labels(gt::everything())
+    )
+  )  |>
+  cols_align(
+    align = "center",
+    columns = gt::everything()
+  )
+
+table_S2
+
+table_S2 |> 
+  gtsave(here("03_results", "tables",
+  "table_S2.png"), expand = 10)
+
+# pdf(here("03_results", "tables",
+#   "dotplot_table_S2.pdf"))
+# data_region_mixed_random[c(1:9)] |>
+#   map(\(x) dotplot(x, level = 0.95, scale = list(y = list(cex = .5)))[["species.cor"]])
+# dev.off()
+
+save_dotplot <- function(dat, plot_name) {
+  png(
+    here("03_results", "figures", "fig1",
+         "dotplot",
+         plot_name),
+    width     = 5.25,
+    height    = 7.25,
+    units     = "in",
+    res       = 1200,
+    pointsize = 4
+  )
+  dotplot(dat, level = 0.95, scale = list(y = list(cex = .6)))[["species.cor"]]
+}
+  
+save_dotplot(data_region_mixed_random[[1]], "cell_1.png")
+dev.off()
+
+save_dotplot(data_region_mixed_random[[2]], "cell_2.png")
+dev.off()
+
+save_dotplot(data_region_mixed_random[[3]], "cell_3.png")
+dev.off()
+
+save_dotplot(data_region_mixed_random[[4]], "cell_4.png")
+dev.off()
+
+save_dotplot(data_region_mixed_random[[5]], "cell_5.png")
+dev.off()
+
+save_dotplot(data_region_mixed_random[[6]], "cell_6.png")
+dev.off()
+
+save_dotplot(data_region_mixed_random[[7]], "cell_7.png")
+dev.off()
+
+save_dotplot(data_region_mixed_random[[8]], "cell_8.png")
+dev.off()
+
+save_dotplot(data_region_mixed_random[[9]], "cell_9.png")
+dev.off()
 
 ```
 
