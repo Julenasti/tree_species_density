@@ -1,5 +1,5 @@
 ---
-title: "Quantify the effect of species minimum temperature, aridity and traits on species climatic sensitivity"
+title: "Quantify the effect of species winter temperature, aridity and traits on species climatic sensitivity"
 output: github_document
 editor_options: 
   chunk_output_type: console
@@ -70,25 +70,6 @@ predictions_species_climsen <- predictions_all_changes |>
   mutate(
     high.climsen = ((predFE_high_cold_wet - n.plot0) / census.interval / plot.area) - ((predFE_high_warm_arid - n.plot0) / census.interval / plot.area)
   )
-
-```
-
-```{r remove_chunk}
-
-data_model <- readRDS(file = here("01_data", "data_model.rds"))
-
-data_model_traits <- data_model |> 
-  distinct(species.cor, 
-           mean.wood.density,
-           mean.seed.dry.mass)
-
-predictions_species_climsen <- predictions_species_climsen |>
-  select(!c(mean.wood.density, mean.seed.dry.mass))
-
-predictions_species_climsen <- left_join(
-  predictions_species_climsen, 
-  data_model_traits, by = "species.cor"
-)
 
 ```
 
@@ -201,7 +182,7 @@ plot_ggeffects_lm <- function(pred, xlab){
   ggtitle("")
 }
 
-plot_tmin <- plot_ggeffects_lm(predict_tmin, "Minimum temperature niche position")
+plot_tmin <- plot_ggeffects_lm(predict_tmin, "Mean winter temperature niche position")
 
 plot_aridity <- plot_ggeffects_lm(predict_aridity, "Aridity niche position")
 
@@ -212,7 +193,7 @@ plot_sdm <- plot_ggeffects_lm(predict_sdm, "Seed dry mass")
 all_plot_ggeffects_lm <- plot_tmin + 
   coord_cartesian(ylim = c(-2.5, 2.5)) +
   scale_x_continuous(
-    name = "Minimum temperature niche position (ºC)"
+    name = "Mean winter temperature\nniche position (ºC)"
   ) +
   plot_aridity + 
   coord_cartesian(ylim = c(-2.5, 2.5)) +
@@ -324,7 +305,7 @@ plot_ggeffects_lmer <- function(pred, xlab){
 }
 
 xlab_v_lmer <- c(
-  "Minimum temperature niche position (ºC)",
+  "Mean winter temperature\nniche position (ºC)",
   "Aridity niche position (aridity index)",
   (bquote("Wood density "(g/cm^3))),
   "Seed dry mass (mg)"

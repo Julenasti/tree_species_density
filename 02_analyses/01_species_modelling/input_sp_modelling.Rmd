@@ -1,8 +1,10 @@
 ---
-title: "Abies concolor"
 output: github_document
 editor_options: 
   chunk_output_type: console
+params:
+  species.cor: Pinus halepensis
+title: "`r params$species.cor`"
 ---
 
 <style type="text/css">
@@ -42,7 +44,7 @@ data_model <- data_model |>
 class(data_model$country)
 
 sp <- data_model |> 
-  filter(species.cor == "Abies concolor")
+  filter(species.cor == params$species.cor)
 
 ```
 
@@ -76,7 +78,7 @@ summary(log(data_model$plot.area))
 
 ```
 
-## Data summary for Abies concolor
+## Data summary for `r params$species.cor`
 
 ```{r summary-sp}
 
@@ -308,6 +310,7 @@ predictions_selected <- map(
                  for.dev, 
                  country, plot.area,
                  bio11.mean, aridity.mean,
+                 mean.wood.density, mean.seed.dry.mass,
                  n.plot0, 
                  n.plot, predFE))
 
@@ -331,6 +334,7 @@ clean_predictions <- function(dat, pred_name){
                   census.interval,
                   country, plot.area,
                   bio11.mean, aridity.mean,
+                  mean.wood.density, mean.seed.dry.mass,
                   n.plot0, n.plot, predFE) |> 
     rename({{pred_name}} := predFE)
 }
@@ -374,7 +378,9 @@ predictions_all_changes <- predictions_selected_changes |>
                            "n.plot", "n.plot0",
                            "census.interval",
                            "country", "plot.area",
-                           "bio11.mean", "aridity.mean"
+                           "bio11.mean", "aridity.mean",
+                           "mean.wood.density",
+                           "mean.seed.dry.mass"
                            ))
 
 pred_all_changes_l <- predictions_all_changes |>
@@ -445,6 +451,6 @@ ggplot(predictions_filtered_test, aes(
   geom_point(alpha = 0.3) +
   geom_abline(slope = 1, intercept = 0, col = "red")
 
-saveRDS(predictions_all_changes, file = here("01_data", "species_predictions", paste(sub(" ", "_", "Abies concolor"), "predictions.rds", sep = "_")))
+saveRDS(predictions_all_changes, file = here("01_data", "species_predictions", paste(sub(" ", "_", params$species.cor), "predictions.rds", sep = "_")))
 
 ```

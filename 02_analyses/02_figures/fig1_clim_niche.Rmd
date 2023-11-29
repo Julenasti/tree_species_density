@@ -23,7 +23,6 @@ library(terra)
 library(fs)
 library(gt)
 library(lme4)
-library(lattice)
 
 ```
 
@@ -235,7 +234,7 @@ get_density_climate <- function(dat, sp){
                                   round(bio11_q_33, 1),
                                   round(bio11_q_66, 1),
                                   round(max(dat$bio11), 1))) +
-    labs(x = "Minimum temperature (ºC)", y = "Aridity index") +
+    labs(x = "Mean winter temperature (ºC)", y = "Aridity index") +
     theme(
       plot.margin = margin(0, 0, 0, 0),
       axis.title = element_text(colour = "grey20", size = 12),
@@ -553,7 +552,9 @@ gg_region_hist <- function(df, text_mean) {
       high = scales::muted("#2166AC"),
       name = "Annual change\nn. stems per hectare",
     ) + 
-    scale_x_continuous(breaks = c(-15, -10, -5, 0, 5, 10)) +
+    scale_x_continuous(
+      name = "Annual change n. stems per hectare",
+      breaks = c(-15, -10, -5, 0, 5, 10)) +
     theme(
       strip.background = element_blank(),
       strip.text =  element_text(size = 11, 
@@ -890,7 +891,7 @@ table_S2 <- data_region_signi_decrease_sp_cell |>
   cols_label(
     n = "N. species",
     decrease = "Change in abundance",
-    cell = "Cell"
+    cell = "Region"
   ) |> 
   tab_style(
     style = list(
@@ -911,52 +912,75 @@ table_S2 |>
   gtsave(here("03_results", "tables",
   "table_S2.png"), expand = 10)
 
-# pdf(here("03_results", "tables",
-#   "dotplot_table_S2.pdf"))
-# data_region_mixed_random[c(1:9)] |>
-#   map(\(x) dotplot(x, level = 0.95, scale = list(y = list(cex = .5)))[["species.cor"]])
-# dev.off()
-
-save_dotplot <- function(dat, plot_name) {
-  png(
-    here("03_results", "figures", "fig1",
-         "dotplot",
-         plot_name),
-    width     = 5.25,
-    height    = 7.25,
-    units     = "in",
-    res       = 1200,
-    pointsize = 4
-  )
-  dotplot(dat, level = 0.95, scale = list(y = list(cex = .6)))[["species.cor"]]
+gg_ranef <- function(dat, region_name) {
+  ggplot(as.data.frame(dat), aes(y = grp, x = condval)) +
+    geom_point() +
+    facet_wrap(~ term, scales = "free_x") +
+    geom_errorbarh(aes(xmin = condval - 1.96 * condsd,
+                       xmax = condval + 1.96 * condsd),
+                   height = 0) +
+    geom_vline(
+      aes(xintercept = 0),
+      linetype = "dashed",
+      colour = "black",
+      linewidth = .5
+    ) +
+    scale_x_continuous(name = "Coefficient") +
+    theme(
+      plot.margin = margin(0, 0, 0, 0),
+      axis.title.y = element_blank(),
+      axis.title.x = element_text(colour = "grey20", size = 12),
+      axis.text = element_text(colour = "grey20", size = 12),
+      axis.ticks = element_blank(),
+      panel.grid.major = element_line(colour = "grey90", linewidth = 0.5),
+      axis.line = element_blank(),
+      panel.background = element_blank(),
+      axis.text.y = element_text(face = "italic"),
+      strip.text = element_blank()
+    ) +
+    ggtitle(region_name)
 }
-  
-save_dotplot(data_region_mixed_random[[1]], "cell_1.png")
-dev.off()
 
-save_dotplot(data_region_mixed_random[[2]], "cell_2.png")
-dev.off()
+region_vector <- c("1 (Cold & wet)", "2", "3 (Warm & wet)",
+                   "4", "5", "6", "7 (Cold & arid)",
+                   "8", "9 (Warm & arid)")
 
-save_dotplot(data_region_mixed_random[[3]], "cell_3.png")
-dev.off()
+gg_region_1_2 <- map2(data_region_mixed_random_sp[c(1, 2)], region_vector[c(1, 2)], \(x, y) gg_ranef(dat = x, region_name = y)) |>
+  reduce(`+`)
 
-save_dotplot(data_region_mixed_random[[4]], "cell_4.png")
-dev.off()
+gg_region_3_4 <- map2(data_region_mixed_random_sp[c(3, 4)], region_vector[c(3, 4)], \(x, y) gg_ranef(dat = x, region_name = y)) |>
+  reduce(`+`)
 
-save_dotplot(data_region_mixed_random[[5]], "cell_5.png")
-dev.off()
+gg_region_5_6 <- map2(data_region_mixed_random_sp[c(5, 6)], region_vector[c(5, 6)], \(x, y) gg_ranef(dat = x, region_name = y)) |>
+  reduce(`+`)
 
-save_dotplot(data_region_mixed_random[[6]], "cell_6.png")
-dev.off()
+gg_region_7_8 <- map2(data_region_mixed_random_sp[c(7, 8)], region_vector[c(7, 8)], \(x, y) gg_ranef(dat = x, region_name = y)) |>
+  reduce(`+`)
 
-save_dotplot(data_region_mixed_random[[7]], "cell_7.png")
-dev.off()
+gg_region_9 <- gg_ranef(dat = data_region_mixed_random_sp[[9]], region_name = region_vector[[9]]) + plot_spacer()
 
-save_dotplot(data_region_mixed_random[[8]], "cell_8.png")
-dev.off()
+gg_region_all <- list(
+  gg_region_1_2,
+  gg_region_3_4,
+  gg_region_5_6,
+  gg_region_7_8,
+  gg_region_9
+)
 
-save_dotplot(data_region_mixed_random[[9]], "cell_9.png")
-dev.off()
+plot_name_v <- c(
+  "gg_region_1_2.png",
+  "gg_region_3_4.png",
+  "gg_region_5_6.png",
+  "gg_region_7_8.png",
+  "gg_region_9.png"
+)
+
+walk2(gg_region_all, plot_name_v, \(x, y) ggsave(
+  plot = x,
+  filename = here("03_results", "figures", "fig1", "dotplot", y),
+  width = 15.5, height = 10.5,
+  dpi = 600
+  ))
 
 ```
 

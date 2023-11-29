@@ -1,19 +1,36 @@
 library(here)
 library(rmarkdown)
-library(fs)
 library(tidyverse)
-library(future)
 library(furrr)
+library(future)
 
 
 # 1-species-level models ---------------------------------------------------
-species_files <- dir_ls(here("02_analyses",
-                             "01_species_modelling"), recurse = T,
-                        regexp = "\\.Rmd$")
+data_model <- readRDS(file = here("01_data", "data_model.rds"))
+
+sp_vector <- unique(data_model$species.cor)
+
+render_sp_models <- function(species.cor) {
+  render(
+    input = here(
+      "02_analyses",
+      "01_species_modelling",
+      "input_sp_modelling.Rmd"
+    ),
+    output_file = paste0(
+      here("02_analyses", "01_species_modelling"),
+      "/",
+      species.cor,
+      ".md"
+    ),
+    params = list(species.cor = species.cor),
+    envir = parent.frame()
+  )
+}
 
 plan(multisession, workers = 6)
 
-future_map(species_files, \(x) render(x))
+future_walk(sp_vector[c(61:73)], \(x) render_sp_models(x))
 
 
 # 2-figures ---------------------------------------------------------------
