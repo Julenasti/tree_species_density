@@ -234,7 +234,7 @@ summary(data_species_names_all$mean_sp_mean_ba_ind_changes_cm)
 
 set.seed(42)
 
-gg_stand_dev <- ggplot(
+fig2_main <- ggplot(
   data_species_names_all,
   aes(x = mean_sp_n_plot_changes,
       y = mean_sp_mean_ba_ind_changes_cm,
@@ -287,11 +287,14 @@ gg_stand_dev <- ggplot(
     axis.title = element_text(size = 10, colour = "black"),
   )
 
+fig2_main
+
 ggsave(
-  plot = gg_stand_dev,
-  here("03_results", "figures", "fig2", "fig2_main.png"),
+  plot = fig2_main,
+  filename = here("03_results", "figures", "fig2", "fig2_main.tiff"),
   width = 8, height = 4,
-  dpi = 600
+  compression = "lzw",
+  dpi = 1200
 )
 
 ```

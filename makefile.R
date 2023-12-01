@@ -30,7 +30,7 @@ render_sp_models <- function(species.cor) {
 
 plan(multisession, workers = 6)
 
-future_walk(sp_vector[c(61:73)], \(x) render_sp_models(x))
+future_walk(sp_vector, \(x) render_sp_models(x))
 
 
 # 2-figures ---------------------------------------------------------------
@@ -45,6 +45,4 @@ render(here("02_analyses", "02_figures",
 
 render(here("02_analyses", "02_figures", 
             "fig4_clim_sensi.Rmd"), "github_document")
-
-
 

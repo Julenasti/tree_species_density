@@ -190,7 +190,7 @@ plot_wd <- plot_ggeffects_lm(predict_wd, "Wood density")
 
 plot_sdm <- plot_ggeffects_lm(predict_sdm, "Seed dry mass")
 
-all_plot_ggeffects_lm <- plot_tmin + 
+fig4_main <- plot_tmin + 
   coord_cartesian(ylim = c(-2.5, 2.5)) +
   scale_x_continuous(
     name = "Mean winter temperature\nniche position (ºC)"
@@ -226,13 +226,14 @@ all_plot_ggeffects_lm <- plot_tmin +
   plot_annotation(tag_levels = "A", tag_prefix = "(", tag_suffix = ")") +
   plot_layout(ncol = 2)
 
-all_plot_ggeffects_lm
+fig4_main
 
 ggsave(
-  plot = all_plot_ggeffects_lm,
-  here("03_results", "figures", "fig4", "fig4_main.png"),
+  plot = fig4_main,
+  here("03_results", "figures", "fig4", "fig4_main.tiff"),
   width = 9, height = 8,
-  dpi = 600
+  compression = "lzw",
+  dpi = 1200
 )
 
 ```

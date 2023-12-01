@@ -592,87 +592,11 @@ fig1_main
 
 ggsave(
   plot = fig1_main,
-  filename = here("03_results", "figures", "fig1", "fig1_main.png"),
+  filename = here("03_results", "figures", "fig1", "fig1_main.tiff"),
   width = 12, height = 8,
-  dpi = 600
+  compression = "lzw",
+  dpi = 1200
 )
-
-```
-
-```{r percentages}
-
-clim_space_pos_neg <- clim_space_cell |> 
-  group_by(species.cor) |> 
-  mutate(
-    pos_neg = case_when(
-      mean_species > 0 ~ "positive",
-      mean_species < 0 ~ "negative"
-    )
-  )
-
-clim_space_per <- clim_space_pos_neg |> 
-  group_by(cell) |>
-  summarise(
-    per_neg  = sum(pos_neg == "negative") / length(unique(species.cor)) * 100,
-    per_pos  = sum(pos_neg == "positive") / length(unique(species.cor)) * 100,
-    per = per_neg + per_pos
-  )
-
-test_that("percentages are OK", {
-  expect_equal(
-    unique(round(clim_space_per$per)), 100
-  )
-  expect_equal(
-    sum(clim_space_pos_neg$pos_neg == "positive" & clim_space_pos_neg$cell == 1) / 73 * 100, 
-    clim_space_per$per_pos[clim_space_per$cell == 1]
-  )
-})
-
-# table
-table_S2 <- clim_space_per |> 
-  mutate(cell2 = cell,
-         cell = case_when(
-           cell == "1" ~ "1 (Cold & wet)",
-           cell == "3" ~ "3 (Warm & wet)",
-           cell == "7" ~ "7 (Cold & arid)",
-           cell == "9" ~ "9 (Warm & arid)",
-           T ~ as.character(cell)
-         )
-  ) |> 
-  select(cell, per_neg, per_pos) |> 
-  gt(
-    groupname_col = "cell2"
-  ) |>
-  fmt_number(
-    columns = c(per_neg, per_pos),
-    decimals = 1
-  ) |> 
-  cols_label(
-    cell = "Region",
-    per_neg = "Species decreasing (%)",
-    per_pos = "Species increasing (%)"
-  ) |> 
-  tab_style(
-    style = list(
-      cell_text(weight = "bold")
-    ),
-    locations = list(
-      cells_column_labels(gt::everything())
-    )
-  )  |>
-  cols_align(
-    align = "center",
-    columns = gt::everything()
-  ) |> 
-  sub_missing(
-    columns = gt::everything(),
-    missing_text = "-"
-  )
-
-table_S2
-
-# gtsave(table_S2, "table_S2.rtf", 
-#        path = here("04-results", "tables"))
 
 ```
 
@@ -925,7 +849,7 @@ gg_ranef <- function(dat, region_name) {
       colour = "black",
       linewidth = .5
     ) +
-    scale_x_continuous(name = "Coefficient") +
+    scale_x_continuous(name = "Intercept") +
     theme(
       plot.margin = margin(0, 0, 0, 0),
       axis.title.y = element_blank(),

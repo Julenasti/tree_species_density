@@ -419,8 +419,8 @@ fig3_main_m <- image_composite(
 fig3_main_m
 
 image_write(fig3_main_m, here(
-  "03_results", "figures", "fig3", "fig3_main.png"
-), density = 600)
+  "03_results", "figures", "fig3", "fig3_main.tiff"
+), density = 1200)
 
 ```
 
@@ -786,8 +786,8 @@ table_S3 <- sp_importance_signi_per |>
 
 table_S3
 
-# gtsave(table_S3, "table_S3.rtf", 
-#        path = here("04-results", "tables"))
+gtsave(table_S3, "table_S3.rtf",
+       path = here("03_results", "tables"))
 
 # negative & positive sp
 table(if_else(sp_importance$observed_climsen < 0, "negative", "positive"))
