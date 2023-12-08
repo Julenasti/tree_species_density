@@ -50,17 +50,7 @@ names(all_files) <- all_files_dir_names
 
 ```{r intersp}
 
-mutate_name <- function(x, names_sp){
-  all_files[[x]] |> 
-    dplyr::mutate(
-      species.cor = names_sp
-    )
-}
-
-arg2_x_names_sp <- list(x = seq_along(all_files), names_sp = names(all_files))
-
-all_files_tb <- arg2_x_names_sp |> 
-  pmap_df(mutate_name)
+all_files_tb <- map2_df(all_files, names(all_files), \(x, y) mutate(x, species.cor = y))
 
 predictions_all_changes <- all_files_tb
 

@@ -12,17 +12,9 @@ sp_vector <- unique(data_model$species.cor)
 
 render_sp_models <- function(species.cor) {
   render(
-    input = here(
-      "02_analyses",
-      "01_species_modelling",
-      "input_sp_modelling.Rmd"
-    ),
-    output_file = paste0(
-      here("02_analyses", "01_species_modelling"),
-      "/",
-      species.cor,
-      ".md"
-    ),
+    input = "02_analyses/01_species_modelling/input_sp_modelling.Rmd",
+    output_file = str_replace(
+      paste0(species.cor, ".md"), " ", "_"),
     params = list(species.cor = species.cor),
     envir = parent.frame()
   )

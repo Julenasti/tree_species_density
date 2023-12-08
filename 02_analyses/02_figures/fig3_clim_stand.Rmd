@@ -68,17 +68,7 @@ eu_sp <- c(
 
 ```{r all_sp}
 
-mutate_name <- function(x, names_sp){
-  all_files[[x]] |> 
-    dplyr::mutate(
-      species.cor = names_sp
-    )
-}
-
-arg2_x_names_sp <- list(x = 1:length(all_files), names_sp = names(all_files))
-
-all_files_tb <- arg2_x_names_sp |> 
-  pmap_df(mutate_name)
+all_files_tb <- map2_df(all_files, names(all_files), \(x, y) mutate(x, species.cor = y))
 
 map(all_files_tb, \(x) sum(is.na(x)))
 
