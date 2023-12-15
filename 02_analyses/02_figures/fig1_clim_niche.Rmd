@@ -41,11 +41,6 @@ data_model_chan <- data_model |>
 
 # n. of trees
 # sum(data_model_chan$n.plot0)
-# sum(data_model_chan$n.plot)
-
-# mean values per hectare
-# round(mean(data_model_chan$n.plot0  / data_model_chan$plot.area))
-# round(mean(data_model_chan$n.plot / data_model_chan$plot.area))
 
 ```
 
@@ -755,91 +750,9 @@ data_region_mixed_random_sp <- data_region_mixed_random |>
   map(\(x) as_tibble(x)) |> 
   map(\(x) filter(x, grpvar == "species.cor"))
 
-data_region_ci <- data_region_mixed_random_sp |> 
-  map(\(x) mutate(x, lci = condval - 1.96 * condsd,
-                  uci = condval + 1.96 * condsd)) 
-
-# identify significant changes
-overlap <- function(dat, x) {
-  between(0, dat[["lci"]][[x]], dat[["uci"]][[x]])
-}
-
-data_region_signi <- map(data_region_ci, \(clim_reg) map_vec(seq_along(unique(data_model_chan_region$species.cor)), \(sp) overlap(dat = clim_reg, x = sp)))
-
-data_region_ci_signi <- map(seq_along(data_region_ci), \(x) bind_cols(data_region_ci[[x]], overlap = data_region_signi[[x]]))
-
-# number of species showing significant
-# changes in abundance
-data_region_signi_sp <- map(data_region_ci_signi, \(x) count(x, overlap))
-
-data_region_signi_sp_cell <- map2(data_region_signi_sp, 1:9, \(x, y) mutate(x, cell = y))
-
-# species showing significant 
-# decreases in abundance
-all_negative <- function(dat, x) {
-  if_else(dat[["lci"]][[x]] < 0 & dat[["uci"]][[x]] < 0, T, F)
-}
-
-data_region_signi_decrease <- map(data_region_ci_signi, \(clim_reg) map_vec(seq_along(unique(data_model_chan_region$species.cor)), \(sp) all_negative(dat = clim_reg, x = sp)))
-
-data_region_ci_signi_decrease <- map(seq_along(data_region_ci), \(x) bind_cols(data_region_ci_signi[[x]], decrease = data_region_signi_decrease[[x]]))
-
-data_region_signi_decrease_filter <- 
-  map(data_region_ci_signi_decrease, \(x) filter(x, overlap == "FALSE"))
-
-data_region_signi_decrease_sp <- map(data_region_signi_decrease_filter, \(x) count(x, decrease))
-
-data_region_signi_decrease_sp_cell <- map2_df(data_region_signi_decrease_sp, 1:9, \(x, y) mutate(x, cell = y))
-
-# View(data_region_signi_decrease_filter)
-
-# table
-table_S2 <- data_region_signi_decrease_sp_cell |> 
-  mutate(cell2 = cell,
-         cell = case_when(
-           cell == "1" ~ "1 (Cold & wet)",
-           cell == "3" ~ "3 (Warm & wet)",
-           cell == "7" ~ "7 (Cold & arid)",
-           cell == "9" ~ "9 (Warm & arid)",
-           T ~ as.character(cell)
-         ),
-         decrease = case_when(
-           decrease == "TRUE" ~ "Decrease",
-           decrease == "FALSE" ~ "Increase"
-         )
-  ) |>
-  select(cell, decrease, n) |> 
-  gt(
-    groupname_col = "cell2"
-  ) |>
-  cols_label(
-    n = "N. species",
-    decrease = "Change in abundance",
-    cell = "Region"
-  ) |> 
-  tab_style(
-    style = list(
-      cell_text(weight = "bold")
-    ),
-    locations = list(
-      cells_column_labels(gt::everything())
-    )
-  )  |>
-  cols_align(
-    align = "center",
-    columns = gt::everything()
-  )
-
-table_S2
-
-table_S2 |> 
-  gtsave(here("03_results", "tables",
-  "table_S2.png"), expand = 10)
-
 gg_ranef <- function(dat, region_name) {
   ggplot(as.data.frame(dat), aes(y = grp, x = condval)) +
     geom_point() +
-    facet_wrap(~ term, scales = "free_x") +
     geom_errorbarh(aes(xmin = condval - 1.96 * condsd,
                        xmax = condval + 1.96 * condsd),
                    height = 0) +
@@ -850,6 +763,7 @@ gg_ranef <- function(dat, region_name) {
       linewidth = .5
     ) +
     scale_x_continuous(name = "Intercept") +
+    coord_cartesian(xlim = c(-17, 10)) +
     theme(
       plot.margin = margin(0, 0, 0, 0),
       axis.title.y = element_blank(),
@@ -881,14 +795,28 @@ gg_region_5_6 <- map2(data_region_mixed_random_sp[c(5, 6)], region_vector[c(5, 6
 gg_region_7_8 <- map2(data_region_mixed_random_sp[c(7, 8)], region_vector[c(7, 8)], \(x, y) gg_ranef(dat = x, region_name = y)) |>
   reduce(`+`)
 
-gg_region_9 <- gg_ranef(dat = data_region_mixed_random_sp[[9]], region_name = region_vector[[9]]) + plot_spacer()
+gg_region_9 <- gg_ranef(dat = data_region_mixed_random_sp[[9]], region_name = region_vector[[9]])
+
+# fit a model for all climatic regions together
+data_region_mixed_all <- lmer(n.plot_changes ~ (1|tmt.plot.id) + (1|species.cor), data = data_region)
+
+fixef(data_region_mixed_all)
+
+data_region_mixed_all_random <- ranef(data_region_mixed_all)
+
+data_region_mixed_all_random_sp <- as_tibble(data_region_mixed_all_random) |> 
+  filter(grpvar == "species.cor")
+
+gg_region_all <- gg_ranef(dat = data_region_mixed_all_random_sp, region_name = "All")
+
+gg_region_9_all <- gg_region_9 + gg_region_all
 
 gg_region_all <- list(
   gg_region_1_2,
   gg_region_3_4,
   gg_region_5_6,
   gg_region_7_8,
-  gg_region_9
+  gg_region_9_all
 )
 
 plot_name_v <- c(
@@ -896,7 +824,7 @@ plot_name_v <- c(
   "gg_region_3_4.png",
   "gg_region_5_6.png",
   "gg_region_7_8.png",
-  "gg_region_9.png"
+  "gg_region_9_all.png"
 )
 
 walk2(gg_region_all, plot_name_v, \(x, y) ggsave(

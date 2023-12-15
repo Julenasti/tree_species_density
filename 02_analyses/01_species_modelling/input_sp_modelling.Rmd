@@ -158,7 +158,7 @@ visreg(m, xvar = "aridity", by = "for.dev", breaks = c(0.25, 0.65))
 gratia::appraise(m)
 draw(m)
 
-## Calibration plot
+## calibration plot
 pred <- predict(m, newdata = sp, type = "response")
 ggplot(data.frame(obs = sp$n.plot0, pred = pred)) +
   geom_point(aes(pred, obs)) +
@@ -276,18 +276,8 @@ predictions <- map(newdata_list, ~predict(
   object = m, newdata = ., se.fit = TRUE, type = "response"
 ))
 
-arg2_dat_pred <- list(dat = newdata_list, pred = predictions)
-
 # add predictions to the corresponding dataset
-add_predictions <- function(dat, pred){
-  dat |> 
-    mutate(
-      predFE = pred$fit
-    )
-}
-
-newdata_list_predictions <- arg2_dat_pred %>%
-  pmap(add_predictions)
+newdata_list_predictions <- map2(newdata_list, predictions, \(x, y) mutate(x, predFE = y[["fit"]]))
 
 names(newdata_list_predictions) <- c(
   "fd_observed",
@@ -315,19 +305,9 @@ predictions_selected <- map(
                  n.plot, predFE))
 
 # add prediction name to each dataset
-mutate_name <- function(x, names_df){
-  predictions_selected[[x]] |> 
-    dplyr::mutate(
-      df = names_df
-    )
-}
+predictions_selected <- map2_df(predictions_selected, names(predictions_selected), \(x, y) mutate(x, df = y))
 
-arg2_x_names_df <- list(x = 1:length(predictions_selected), names_df = names(predictions_selected))
-
-predictions_selected <- arg2_x_names_df %>%
-  pmap_df(mutate_name)
-
-clean_predictions <- function(dat, pred_name){
+clean_predictions <- function(dat, pred_name) {
   predictions_selected |> 
     filter(df == dat) |> 
     dplyr::select(tmt.plot.id,
