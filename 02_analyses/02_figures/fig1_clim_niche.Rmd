@@ -203,17 +203,13 @@ get_density_climate <- function(dat, sp){
     clim_data_df_mean, aes(x = tmin, y = aridity, fill = mean)
     ) +
     geom_raster() +
-    # geom_text(aes(label = seq(1:9)), size = 3,
-    #           nudge_x = 0.3, nudge_y = -0.3) +
     geom_text(aes(label = "Cold & wet"), x = 1.333333, y = 2.9, size = 4) +
     geom_text(aes(label = "Warm & wet"), x = 2.666667, y = 2.9, size = 4) +
     geom_text(aes(label = "Cold & arid"), x = 1.333333, y = 1.56, size = 4) +
     geom_text(aes(label = "Warm & Arid"), x = 2.666667, y = 1.56, size = 4) +
-     # geom_text(aes(label = paste(round(mean, 1), " ", "(", round(clim_data_df_sd$sd, 1), ")", sep = ""))) +
     scale_fill_gradient2(
       mid = "white",
       midpoint = 0,
-      # limits = c(-10, 14),
       low = scales::muted("#B2182B"),
       high = scales::muted("#2166AC"),
       name =
@@ -510,89 +506,6 @@ clim_space_cell <- clim_space_sp_mean |>
     se_all = round(sd(mean_species) / sqrt(length(unique(species.cor))), 1)
   )
 
-df_text_mean <- clim_space_cell |> 
-  group_by(cell) |>
-  summarise(
-    mean_all = round(mean(mean_species), 1),
-    sd_all = round(sd(mean_species), 1),
-    se_all = round(sd(mean_species) / sqrt(length(unique(species.cor))), 1)
-  ) |> 
-  mutate(
-    x = -10,
-    y = 15
-  )
-
-cell_labs <- c("Cold & wet", "", "Warm & wet", 
-               "", "", "",
-               "Cold & arid", "", "Warm & arid")
-
-names(cell_labs) <- 1:9
-
-gg_region_hist <- function(df, text_mean) {
- ggplot(df, 
-         aes(x = mean_species, fill = after_stat(x))) +
-    geom_histogram(
-      binwidth = 1, colour = "black", linewidth = .1
-    ) +
-    geom_vline(aes(xintercept = 0),
-               linetype = "dashed",
-               colour = "black", linewidth = .5) +
-    facet_wrap(cell ~ .,
-               labeller = labeller(cell = cell_labs)) +
-    labs(y = "N. species", x = "") +
-    scale_fill_gradient2(
-      mid = "white",
-      midpoint = 0,
-      low = scales::muted("#B2182B"),
-      high = scales::muted("#2166AC"),
-      name = "Annual change\nn. stems per hectare",
-    ) + 
-    scale_x_continuous(
-      name = "Annual change n. stems per hectare",
-      breaks = c(-15, -10, -5, 0, 5, 10)) +
-    theme(
-      strip.background = element_blank(),
-      strip.text =  element_text(size = 11, 
-                                 colour = "grey20"),
-      plot.margin = margin(0, 0, 0, 0),
-      axis.title = element_text(colour = "grey20", size = 12),
-      legend.text = element_text(size = 10),
-      axis.ticks = element_line(colour = "grey40"),
-      panel.grid.major = element_line(colour = "grey90", linewidth = 0.5),
-      axis.line = element_blank(),
-      legend.key = element_blank(),
-      panel.background = element_blank(),
-      panel.spacing = unit(0, "lines")
-    ) +
-    geom_text(data = text_mean, 
-              aes(label = paste(mean_all, "\ub1", se_all), x = x, y = y), 
-              size = 3.5,
-              color = "grey40")
-}
-
-fig1_hist <- gg_region_hist(
-  df = clim_space_cell,
-  text_mean = df_text_mean
-  )
-
-```
-
-```{r fig1_main}
-
-fig1_main <- gg_sp_filter /
-  fig1_hist +
-  plot_annotation(tag_levels = "A", tag_prefix = "(", tag_suffix = ")")
-
-fig1_main
-
-ggsave(
-  plot = fig1_main,
-  filename = here("03_results", "figures", "fig1", "fig1_main.tiff"),
-  width = 12, height = 8,
-  compression = "lzw",
-  dpi = 1200
-)
-
 ```
 
 ```{r important_changes}
@@ -750,6 +663,89 @@ data_region_mixed_random_sp <- data_region_mixed_random |>
   map(\(x) as_tibble(x)) |> 
   map(\(x) filter(x, grpvar == "species.cor"))
 
+data_region_ci <- data_region_mixed_random_sp |> 
+  map(\(x) mutate(x, lci = condval - 1.96 * condsd,
+                  uci = condval + 1.96 * condsd)) 
+
+# identify significant changes
+overlap <- function(dat, x) {
+  between(0, dat[["lci"]][[x]], dat[["uci"]][[x]])
+}
+
+data_region_signi <- map(data_region_ci, \(clim_reg) map_vec(seq_along(unique(data_model_chan_region$species.cor)), \(sp) overlap(dat = clim_reg, x = sp)))
+
+data_region_ci_signi <- map(seq_along(data_region_ci), \(x) bind_cols(data_region_ci[[x]], overlap = data_region_signi[[x]]))
+
+# number of species showing significant
+# changes in abundance
+data_region_signi_sp <- map(data_region_ci_signi, \(x) count(x, overlap))
+
+data_region_signi_sp_cell <- map2(data_region_signi_sp, 1:9, \(x, y) mutate(x, cell = y))
+
+# species showing significant 
+# decreases in abundance
+all_negative <- function(dat, x) {
+  if_else(dat[["lci"]][[x]] < 0 & dat[["uci"]][[x]] < 0, T, F)
+}
+
+data_region_signi_decrease <- map(data_region_ci_signi, \(clim_reg) map_vec(seq_along(unique(data_model_chan_region$species.cor)), \(sp) all_negative(dat = clim_reg, x = sp)))
+
+data_region_ci_signi_decrease <- map(seq_along(data_region_ci), \(x) bind_cols(data_region_ci_signi[[x]], decrease = data_region_signi_decrease[[x]]))
+
+data_region_signi_decrease_filter <- 
+  map(data_region_ci_signi_decrease, \(x) filter(x, overlap == "FALSE"))
+
+data_region_signi_decrease_sp <- map(data_region_signi_decrease_filter, \(x) count(x, decrease))
+
+data_region_signi_decrease_sp_cell <- map2_df(data_region_signi_decrease_sp, 1:9, \(x, y) mutate(x, cell = y))
+
+# View(data_region_signi_decrease_filter)
+
+data_region_signi_decrease_sp_cell_m <- data_region_signi_decrease_sp_cell |> 
+  mutate(cell2 = cell,
+         cell = case_when(
+           cell == "1" ~ "1 (Cold & wet)",
+           cell == "3" ~ "3 (Warm & wet)",
+           cell == "7" ~ "7 (Cold & arid)",
+           cell == "9" ~ "9 (Warm & arid)",
+           T ~ as.character(cell)
+         ),
+         decrease = case_when(
+           decrease == "TRUE" ~ "Decrease",
+           decrease == "FALSE" ~ "Increase"
+         )
+  )
+
+# table
+table_S2 <- data_region_signi_decrease_sp_cell_m |> 
+  select(cell, decrease, n) |> 
+  gt(
+    groupname_col = "cell2"
+  ) |>
+  cols_label(
+    n = "N. species",
+    decrease = "Change in abundance",
+    cell = "Region"
+  ) |> 
+  tab_style(
+    style = list(
+      cell_text(weight = "bold")
+    ),
+    locations = list(
+      cells_column_labels(gt::everything())
+    )
+  )  |>
+  cols_align(
+    align = "center",
+    columns = gt::everything()
+  )
+
+table_S2
+
+# table_S2 |> 
+#   gtsave(here("03_results", "tables",
+#   "table.png"), expand = 10)
+
 gg_ranef <- function(dat, region_name) {
   ggplot(as.data.frame(dat), aes(y = grp, x = condval)) +
     geom_point() +
@@ -836,3 +832,107 @@ walk2(gg_region_all, plot_name_v, \(x, y) ggsave(
 
 ```
 
+```{r fig1_main}
+
+data_region_signi_wide <- data_region_signi_decrease_sp_cell_m |> select(
+  decrease, n, cell2
+) |> 
+  pivot_wider(names_from = decrease, values_from = n)
+
+df_text_mean <- clim_space_cell |> 
+  group_by(cell) |>
+  summarise(
+    mean_all = round(mean(mean_species), 1),
+    sd_all = round(sd(mean_species), 1),
+    se_all = round(sd(mean_species) / sqrt(length(unique(species.cor))), 1)
+  ) |> 
+  mutate(
+    x = -10,
+    y = 15
+  )
+
+df_text_mean_sp <- left_join(df_text_mean, data_region_signi_wide, by = c("cell" = "cell2"))
+
+cell_labs <- c("Cold & wet", "", "Warm & wet", 
+               "", "", "",
+               "Cold & arid", "", "Warm & arid")
+
+names(cell_labs) <- 1:9
+
+gg_region_hist <- function(df, text_mean) {
+ ggplot(df, 
+         aes(x = mean_species, fill = after_stat(x))) +
+    geom_histogram(
+      binwidth = 1, colour = "black", linewidth = .2
+    ) +
+    geom_vline(aes(xintercept = 0),
+               linetype = "dashed",
+               colour = "black", linewidth = .5) +
+    facet_wrap(cell ~ .,
+               labeller = labeller(cell = cell_labs)) +
+    labs(y = "N. species", x = "") +
+    scale_fill_gradient2(
+      mid = "white",
+      midpoint = 0,
+      low = scales::muted("#B2182B"),
+      high = scales::muted("#2166AC"),
+      name = "Annual change\nn. stems per hectare",
+    ) + 
+    scale_x_continuous(
+      name = "Annual change n. stems per hectare",
+      breaks = c(-15, -10, -5, 0, 5, 10)) +
+    theme(
+      strip.background = element_blank(),
+      strip.text =  element_text(size = 11, 
+                                 colour = "grey20"),
+      plot.margin = margin(0, 0, 0, 0),
+      axis.title = element_text(colour = "grey20", size = 12),
+      legend.text = element_text(size = 10),
+      axis.ticks = element_line(colour = "grey40"),
+      panel.grid.major = element_line(colour = "grey90", linewidth = 0.5),
+      axis.line = element_blank(),
+      legend.key = element_blank(),
+      panel.background = element_blank(),
+      panel.spacing = unit(0, "lines")
+    ) +
+    geom_text(data = text_mean,
+              aes(label = paste(mean_all, "\ub1", se_all),
+                  x = x, y = y),
+              size = 3.5,
+              color = "grey40") +
+    geom_text(data = text_mean, 
+              aes(label = paste(Increase, "    ", "\n\n"),
+                  x = x, y = y), 
+              size = 3.5, color = "#2166AC") +
+    geom_text(data = text_mean, 
+              aes(label = "/\n\n",
+                  x = x, y = y),
+              size = 3.5) +
+    geom_text(data = text_mean,
+              aes(label = paste("     ", Decrease, "\n\n"),
+                  x = x, y = y),
+              size = 3.5, color = "#B2182B")
+}
+
+fig1_hist <- gg_region_hist(
+  df = clim_space_cell,
+  text_mean = df_text_mean_sp
+  )
+
+fig1_hist
+
+fig1_main <- gg_sp_filter /
+  fig1_hist +
+  plot_annotation(tag_levels = "A", tag_prefix = "(", tag_suffix = ")")
+
+fig1_main
+
+ggsave(
+  plot = fig1_main,
+  filename = here("03_results", "figures", "fig1", "fig1_main.tiff"),
+  width = 12, height = 8,
+  compression = "lzw",
+  dpi = 1200
+)
+
+```

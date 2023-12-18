@@ -243,185 +243,6 @@ walk2(gg_pred_us_all, v_pred_us_all, \(x, y) ggsave(
 
 ```
 
-```{r fig3_main}
-
-# species
-pred_changes_l_rel_sp <- pred_changes_l_rel |> 
-  filter(
-    species.cor == "Acer rubrum" |
-    species.cor == "Abies concolor" |
-    species.cor == "Pinus ponderosa" |
-    species.cor == "Populus tremuloides" |
-    species.cor == "Pinus echinata" |
-    species.cor == "Pinus sylvestris" |
-    species.cor == "Picea abies" |
-    species.cor == "Fagus sylvatica" |
-    species.cor == "Quercus robur" |
-    species.cor == "Quercus ilex"
-    )
-
-# equal weights for each species
-predictions_all_changes_w <- predictions_all_changes_y_ha |> 
-  mutate(
-    predFE_observed_climsen = predFE_observed_cold_wet_y_ha - predFE_observed_warm_arid_y_ha,
-    predFE_low_climsen = predFE_low_cold_wet_y_ha - predFE_low_warm_arid_y_ha,
-    predFE_high_climsen = predFE_high_cold_wet_y_ha - predFE_high_warm_arid_y_ha
-  ) |> 
-  group_by(species.cor) |> 
-  summarise(
-    predFE_observed_climsen_sp = mean(predFE_observed_climsen),
-    predFE_low_climsen_sp = mean(predFE_low_climsen),
-    predFE_high_climsen_sp = mean(predFE_high_climsen)
-  )
-
-pred_all_changes_w_l <- predictions_all_changes_w |>
-  pivot_longer(
-    cols = c(
-      predFE_observed_climsen_sp,
-      predFE_low_climsen_sp,
-      predFE_high_climsen_sp
-      ),
-    names_to = "name_diff_fd",
-    values_to = "val_diff_fd"
-    ) |> 
-  group_by(name_diff_fd) |> 
-  mutate(
-    predFE_mean_all = mean(val_diff_fd, na.rm = T)
-  )
-
-mean(predictions_all_changes_w$predFE_observed_climsen_sp)
-mean(predictions_all_changes_w$predFE_low_climsen_sp)
-mean(predictions_all_changes_w$predFE_high_climsen_sp)
-
-pred_all_changes_w_l_rel <- pred_all_changes_w_l |>
-  mutate(
-    name_diff_fd = case_when(
-      name_diff_fd == "predFE_observed_climsen_sp" ~ "Actual stand development",
-      name_diff_fd == "predFE_low_climsen_sp" ~ "Early stand development",
-      T ~ "Late stand development"
-    ),
-    name_diff_fd = as.factor(name_diff_fd),
-    name_diff_fd = fct_relevel(
-    name_diff_fd,
-    "Actual stand development",
-    "Early stand development",
-    "Late stand development"
-    )
-  )
-
-levels(pred_all_changes_w_l_rel$name_diff_fd)
-
-df_text_mean <- pred_all_changes_w_l_rel |> 
-  group_by(name_diff_fd) |> 
-  summarise(
-    predFE_mean_all = round(mean(val_diff_fd, na.rm = T), 1),
-    predFE_sd_all = round(sd(val_diff_fd, na.rm = T), 1),
-    predFE_se_all = round(sd(val_diff_fd, na.rm = T) / sqrt(length(unique(species.cor))), 1),
-  ) |> 
-  mutate(
-    x = 7.5,
-    y = 10
-  )
-
-test_that("SE is OK", {
-  expect_equal(
-    round(sd(pred_all_changes_w_l_rel$val_diff_fd[pred_all_changes_w_l_rel$name_diff_fd == "Early stand development"]) / sqrt(73), 1),
-    df_text_mean$predFE_se_all[df_text_mean$name_diff_fd == "Early stand development"]
-  )
-})
-
-gg_sensitivity_hist <- function(df, text_mean) {
- ggplot(df, 
-         aes(x = val_diff_fd, fill = after_stat(x))) +
-    geom_histogram(
-      binwidth = .75, colour = "black", linewidth = .25
-    ) +
-    geom_vline(aes(xintercept = 0),
-               linetype = "dashed",
-               colour = "black", linewidth = .5) +
-    facet_wrap(name_diff_fd ~ .) +
-    labs(y = "N. species", x = "") +
-    scale_fill_gradient2(
-      mid = "white",
-      midpoint = 0,
-      low = scales::muted("#B2182B"),
-      high = scales::muted("#2166AC"),
-      name = expression(atop("Climatic sensitivity (Cold & wet - Warm & arid)", "Annual change n. stems per hectare"))
-    ) +
-    theme(
-      legend.position = "bottom",
-      strip.background = element_blank(),
-      strip.text =  element_blank(),
-      plot.margin = margin(0, 0, 0, 0),
-      axis.title = element_text(colour = "black", size = 10),
-      axis.text = element_text(size = 10, colour = "black"),
-      legend.text = element_text(size = 10),
-      legend.title = element_text(size = 10),
-      panel.grid.major = element_line(colour = "grey90", linewidth = 0.5),
-      axis.line = element_blank(),
-      legend.key = element_blank(),
-      panel.background = element_blank(),
-      panel.spacing = unit(0, "lines")
-    ) +
-    geom_text(data = text_mean, 
-              aes(label = paste(predFE_mean_all, "\ub1", predFE_se_all), x = x, y = y), 
-              size = 3.5,
-              color = "grey40")
-}
-
-fig3_hist <- gg_sensitivity_hist(
-  df = pred_all_changes_w_l_rel,
-  text_mean = df_text_mean
-) +
-  theme(
-    legend.margin = margin(0, 0, 0, 0),
-    legend.box.margin = margin(-10, -10, 0, -10),
-    panel.spacing = unit(.7, "lines")
-  ) +
-  labs(tag = "(B)")
-
-ggsave(
-  plot = fig3_hist,
-  here("03_results", "figures", "fig3", "fig3_hist.png"),
-  width = 8, height = 2.1,
-  dpi = 600
-)
-
-fig3_slab <- (gg_slab_sp_clim(dat = pred_changes_l_rel_sp) +
-                theme(plot.margin = margin(0, 2, 0, 0, "cm"),
-                      legend.text = element_text(color = "black", size = 10),
-                      strip.text = element_text(color = "black", size = 10),
-                      axis.title.x = element_text(color = "black", size = 10),
-                      axis.text.x = element_text(color = "black", size = 10),
-                      axis.text.y = element_text(color = "black", size = 10,
-                                                 face = "italic")) + labs(tag = "(A)")) /
-  plot_spacer() +
-  plot_layout(heights = c(4, 2))
-
-ggsave(
-  plot = fig3_slab,
-  here("03_results", "figures", "fig3", "fig3_slab.png"),
-  width = 10, height = 8.2,
-  dpi = 600
-)
-
-fig3_hist_m <- image_read(here("03_results", "figures", "fig3", "fig3_hist.png"))
-
-fig3_slab_m <- image_read(here("03_results", "figures", "fig3", "fig3_slab.png"))
-
-fig3_main_m <- image_composite(
-  fig3_slab_m, fig3_hist_m,
-  offset = "+1050+3650"
-  )
-
-fig3_main_m
-
-image_write(fig3_main_m, here(
-  "03_results", "figures", "fig3", "fig3_main.tiff"
-), density = 1200)
-
-```
-
 ```{r within_sp}
 
 predictions_uncertainty <- predictions_all_changes_y_ha |>
@@ -449,7 +270,7 @@ predictions_uncertainty_q <- predictions_uncertainty |>
     predFE_low_climsen_q_0025,
     predFE_low_climsen_q_0975,
     predFE_high_climsen_q_0025,
-    predFE_high_climsen_q_0975,
+    predFE_high_climsen_q_0975
     )
 
 predictions_uncertainty_q
@@ -742,20 +563,230 @@ table_S3
 gtsave(table_S3, "table_S4.1.rtf",
        path = here("03_results", "tables"))
 
-# negative & positive sp
-table(if_else(sp_importance$predFE_observed_climsen_sp < 0, "negative", "positive"))
-table(if_else(sp_importance$predFE_low_climsen_sp < 0, "negative", "positive"))
-table(if_else(sp_importance$predFE_high_climsen_sp < 0, "negative", "positive"))
-
 # only for significant changes
 # actual
-sum(sp_importance_signi_count$observed_climsen_signi_count == T & sp_importance_signi_count$observed_climsen_signi > 0) / sum(sp_importance_signi_count$observed_climsen_signi_count == T) * 100
+sum(sp_importance_signi_count$observed_climsen_signi_count == T & sp_importance_signi_count$observed_climsen_signi > 0) / nrow(sp_importance_signi_count) * 100
 
 # early
-sum(sp_importance_signi_count$low_climsen_signi_count == T & sp_importance_signi_count$low_climsen_signi > 0) / sum(sp_importance_signi_count$low_climsen_signi_count == T) * 100
+sum(sp_importance_signi_count$low_climsen_signi_count == T & sp_importance_signi_count$low_climsen_signi > 0) / nrow(sp_importance_signi_count) * 100
 
 # late
-sum(sp_importance_signi_count$high_climsen_signi_count == T & sp_importance_signi_count$high_climsen_signi > 0) / sum(sp_importance_signi_count$high_climsen_signi_count == T) * 100
+sum(sp_importance_signi_count$high_climsen_signi_count == T & sp_importance_signi_count$high_climsen_signi > 0) / nrow(sp_importance_signi_count) * 100
+
+n_species_signi_text <- tibble(
+  for_dev = c(
+    "Actual stand development",
+    "Early stand development",
+    "Late stand development"
+  ),
+  Increase = c(
+    sum(sp_importance_signi_count$observed_climsen_signi_count == T & sp_importance_signi_count$observed_climsen_signi > 0),
+    sum(sp_importance_signi_count$low_climsen_signi_count == T & sp_importance_signi_count$low_climsen_signi > 0),
+    sum(sp_importance_signi_count$high_climsen_signi_count == T & sp_importance_signi_count$high_climsen_signi > 0)
+    ),
+  Decrease = c(
+    sum(sp_importance_signi_count$observed_climsen_signi_count == T & sp_importance_signi_count$observed_climsen_signi < 0),
+    sum(sp_importance_signi_count$low_climsen_signi_count == T & sp_importance_signi_count$low_climsen_signi < 0),
+    sum(sp_importance_signi_count$high_climsen_signi_count == T & sp_importance_signi_count$high_climsen_signi < 0)
+  )
+)
 
 ```
 
+```{r fig3_main}
+
+# species
+pred_changes_l_rel_sp <- pred_changes_l_rel |> 
+  filter(
+    species.cor == "Acer rubrum" |
+    species.cor == "Abies concolor" |
+    species.cor == "Pinus ponderosa" |
+    species.cor == "Populus tremuloides" |
+    species.cor == "Pinus echinata" |
+    species.cor == "Pinus sylvestris" |
+    species.cor == "Picea abies" |
+    species.cor == "Fagus sylvatica" |
+    species.cor == "Quercus robur" |
+    species.cor == "Quercus ilex"
+    )
+
+# equal weights for each species
+predictions_all_changes_w <- predictions_all_changes_y_ha |> 
+  mutate(
+    predFE_observed_climsen = predFE_observed_cold_wet_y_ha - predFE_observed_warm_arid_y_ha,
+    predFE_low_climsen = predFE_low_cold_wet_y_ha - predFE_low_warm_arid_y_ha,
+    predFE_high_climsen = predFE_high_cold_wet_y_ha - predFE_high_warm_arid_y_ha
+  ) |> 
+  group_by(species.cor) |> 
+  summarise(
+    predFE_observed_climsen_sp = mean(predFE_observed_climsen),
+    predFE_low_climsen_sp = mean(predFE_low_climsen),
+    predFE_high_climsen_sp = mean(predFE_high_climsen)
+  )
+
+pred_all_changes_w_l <- predictions_all_changes_w |>
+  pivot_longer(
+    cols = c(
+      predFE_observed_climsen_sp,
+      predFE_low_climsen_sp,
+      predFE_high_climsen_sp
+      ),
+    names_to = "name_diff_fd",
+    values_to = "val_diff_fd"
+    ) |> 
+  group_by(name_diff_fd) |> 
+  mutate(
+    predFE_mean_all = mean(val_diff_fd, na.rm = T)
+  )
+
+mean(predictions_all_changes_w$predFE_observed_climsen_sp)
+mean(predictions_all_changes_w$predFE_low_climsen_sp)
+mean(predictions_all_changes_w$predFE_high_climsen_sp)
+
+pred_all_changes_w_l_rel <- pred_all_changes_w_l |>
+  mutate(
+    name_diff_fd = case_when(
+      name_diff_fd == "predFE_observed_climsen_sp" ~ "Actual stand development",
+      name_diff_fd == "predFE_low_climsen_sp" ~ "Early stand development",
+      T ~ "Late stand development"
+    ),
+    name_diff_fd = as.factor(name_diff_fd),
+    name_diff_fd = fct_relevel(
+    name_diff_fd,
+    "Actual stand development",
+    "Early stand development",
+    "Late stand development"
+    )
+  )
+
+levels(pred_all_changes_w_l_rel$name_diff_fd)
+
+df_text_mean <- pred_all_changes_w_l_rel |> 
+  group_by(name_diff_fd) |> 
+  summarise(
+    predFE_mean_all = round(mean(val_diff_fd, na.rm = T), 1),
+    predFE_sd_all = round(sd(val_diff_fd, na.rm = T), 1),
+    predFE_se_all = round(sd(val_diff_fd, na.rm = T) / sqrt(length(unique(species.cor))), 1)
+  ) |> 
+  mutate(
+    x = 7.5,
+    y = 10
+  )
+
+test_that("SE is OK", {
+  expect_equal(
+    round(sd(pred_all_changes_w_l_rel$val_diff_fd[pred_all_changes_w_l_rel$name_diff_fd == "Early stand development"]) / sqrt(73), 1),
+    df_text_mean$predFE_se_all[df_text_mean$name_diff_fd == "Early stand development"]
+  )
+})
+
+df_text_mean_sp <- left_join(df_text_mean, n_species_signi_text, by = c("name_diff_fd" = "for_dev"))
+
+gg_sensitivity_hist <- function(df, text_mean) {
+ ggplot(df, 
+         aes(x = val_diff_fd, fill = after_stat(x))) +
+    geom_histogram(
+      binwidth = .75, colour = "black", linewidth = .25
+    ) +
+    geom_vline(aes(xintercept = 0),
+               linetype = "dashed",
+               colour = "black", linewidth = .5) +
+    facet_wrap(name_diff_fd ~ .) +
+    labs(y = "N. species", x = "") +
+    scale_fill_gradient2(
+      mid = "white",
+      midpoint = 0,
+      low = scales::muted("#B2182B"),
+      high = scales::muted("#2166AC"),
+      name = expression(atop("Climatic sensitivity (Cold & wet - Warm & arid)", "Annual change n. stems per hectare"))
+    ) +
+    theme(
+      legend.position = "bottom",
+      strip.background = element_blank(),
+      strip.text =  element_blank(),
+      plot.margin = margin(0, 0, 0, 0),
+      axis.title = element_text(colour = "black", size = 10),
+      axis.text = element_text(size = 10, colour = "black"),
+      legend.text = element_text(size = 10),
+      legend.title = element_text(size = 10),
+      panel.grid.major = element_line(colour = "grey90", linewidth = 0.5),
+      axis.line = element_blank(),
+      legend.key = element_blank(),
+      panel.background = element_blank(),
+      panel.spacing = unit(0, "lines")
+    ) +
+    # geom_text(data = text_mean, 
+    #           aes(label = paste(predFE_mean_all, "\ub1", predFE_se_all), x = x, y = y), 
+    #           size = 3.5,
+    #           color = "grey40")
+    geom_text(data = text_mean,
+              aes(label = paste(predFE_mean_all, "\ub1", predFE_se_all),
+                  x = x, y = y),
+              size = 3.5,
+              color = "grey40") +
+    geom_text(data = text_mean, 
+              aes(label = paste(Increase, "    ", "\n\n"),
+                  x = x, y = y), 
+              size = 3.5, color = "#2166AC") +
+    geom_text(data = text_mean, 
+              aes(label = "/\n\n",
+                  x = x, y = y),
+              size = 3.5) +
+    geom_text(data = text_mean,
+              aes(label = paste("     ", Decrease, "\n\n"),
+                  x = x, y = y),
+              size = 3.5, color = "#B2182B")
+}
+
+fig3_hist <- gg_sensitivity_hist(
+  df = pred_all_changes_w_l_rel,
+  text_mean = df_text_mean_sp
+) +
+  theme(
+    legend.margin = margin(0, 0, 0, 0),
+    legend.box.margin = margin(-10, -10, 0, -10),
+    panel.spacing = unit(.7, "lines")
+  ) +
+  labs(tag = "(B)")
+
+ggsave(
+  plot = fig3_hist,
+  here("03_results", "figures", "fig3", "fig3_hist.png"),
+  width = 8, height = 2.1,
+  dpi = 600
+)
+
+fig3_slab <- (gg_slab_sp_clim(dat = pred_changes_l_rel_sp) +
+                theme(plot.margin = margin(0, 2, 0, 0, "cm"),
+                      legend.text = element_text(color = "black", size = 10),
+                      strip.text = element_text(color = "black", size = 10),
+                      axis.title.x = element_text(color = "black", size = 10),
+                      axis.text.x = element_text(color = "black", size = 10),
+                      axis.text.y = element_text(color = "black", size = 10,
+                                                 face = "italic")) + labs(tag = "(A)")) /
+  plot_spacer() +
+  plot_layout(heights = c(4, 2))
+
+ggsave(
+  plot = fig3_slab,
+  here("03_results", "figures", "fig3", "fig3_slab.png"),
+  width = 10, height = 8.2,
+  dpi = 600
+)
+
+fig3_hist_m <- image_read(here("03_results", "figures", "fig3", "fig3_hist.png"))
+
+fig3_slab_m <- image_read(here("03_results", "figures", "fig3", "fig3_slab.png"))
+
+fig3_main_m <- image_composite(
+  fig3_slab_m, fig3_hist_m,
+  offset = "+1050+3650"
+  )
+
+fig3_main_m
+
+image_write(fig3_main_m, here(
+  "03_results", "figures", "fig3", "fig3_main.tiff"
+), density = 1200)
+
+```

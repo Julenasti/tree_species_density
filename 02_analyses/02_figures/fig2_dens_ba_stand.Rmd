@@ -91,13 +91,6 @@ data_ls <- list(
   
 )
 
-mutate_name <- function(df, names_stand) {
-  df |> 
-    dplyr::mutate(
-      stand_dev = names_stand
-    )
-}
-
 names_stand_v <- c(
   "All data", 
   "Early stand development",
@@ -105,13 +98,7 @@ names_stand_v <- c(
   "Late stand development"
 )
 
-arg2_df_names_stand <- list(
-  df = data_ls,
-  names_stand = names_stand_v
-)
-
-data_ls_m <- arg2_df_names_stand |> 
-  pmap(mutate_name)
+data_ls_m <- map2(data_ls, names_stand_v, \(x, y) mutate(x, stand_dev = y))
 
 group_by_species <- function(df) {
   df |> 
