@@ -1,5 +1,5 @@
 # univariate EDA plots
-plot_eda <- function(dat){
+plot_eda <- function(dat) {
   
   g1 <- ggplot(dat, aes(y = log(n.plot), l.n.plot0)) +
     geom_hex()
@@ -23,32 +23,32 @@ plot_eda <- function(dat){
 }
 
 # coplots
-coplot_n0_ci <- function(dat){
+coplot_n0_ci <- function(dat) {
   coplot(log(n.plot) ~ l.n.plot0 | census.interval,
          data = dat)
 }
 
-coplot_n0_fd <- function(dat){
+coplot_n0_fd <- function(dat) {
   coplot(log(n.plot) ~ l.n.plot0 | for.dev,
          data = dat)
 }
 
-coplot_n0_fd_arid <- function(dat){
+coplot_n0_fd_arid <- function(dat) {
   coplot(log(n.plot) ~ l.n.plot0 | for.dev * aridity,
          data = dat)
 }
 
-coplot_n0_fd_bio11 <- function(dat){
+coplot_n0_fd_bio11 <- function(dat) {
   coplot(log(n.plot) ~ l.n.plot0 | for.dev * bio11,
          data = dat)
 }
 
-coplot_fd_arid <- function(dat){
+coplot_fd_arid <- function(dat) {
   coplot(log(n.plot) ~ for.dev | aridity,
          data = dat)
 }
 
-coplot_fd_bio11 <- function(dat){
+coplot_fd_bio11 <- function(dat) {
   coplot(log(n.plot) ~ for.dev | bio11,
          data = dat)
 }

@@ -863,17 +863,19 @@ gg_region_hist <- function(df, text_mean) {
  ggplot(df, 
          aes(x = mean_species, fill = after_stat(x))) +
     geom_histogram(
+      boundary = 0,
       binwidth = 1, colour = "black", linewidth = .2
     ) +
     geom_vline(aes(xintercept = 0),
                linetype = "dashed",
-               colour = "black", linewidth = .5) +
+               colour = "black", linewidth = .7) +
     facet_wrap(cell ~ .,
                labeller = labeller(cell = cell_labs)) +
     labs(y = "N. species", x = "") +
     scale_fill_gradient2(
       mid = "white",
       midpoint = 0,
+      breaks = c(5, 0, -5, -10, -15),
       low = scales::muted("#B2182B"),
       high = scales::muted("#2166AC"),
       name = "Annual change\nn. stems per hectare",
