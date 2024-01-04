@@ -27,7 +27,7 @@ library(magick)
 
 ```{r read}
 
-read_data <- function(data_dir){
+read_data <- function(data_dir) {
   fs::dir_ls(data_dir, regexp = "\\.rds$") |>
     purrr::map(read_rds)
 }
@@ -633,13 +633,27 @@ n_species_signi_text <- tibble(
 )
 
 # n. species significant in early and late
-n_species_signi_low_high <- sp_importance_signi_count |> 
+# towards cold & wet
+n_species_signi_low_high_cw <- sp_importance_signi_count |> 
   filter(
     (low_climsen_signi_count == T & 
        low_climsen_signi > 0) &
       (high_climsen_signi_count == T & 
          high_climsen_signi > 0)
   )
+
+nrow(n_species_signi_low_high_cw) / nrow(sp_importance_signi_count) * 100
+
+# towards warm & arid
+n_species_signi_low_high_wa <- sp_importance_signi_count |> 
+  filter(
+    (low_climsen_signi_count == T & 
+       low_climsen_signi < 0) &
+      (high_climsen_signi_count == T & 
+         high_climsen_signi < 0)
+  )
+
+nrow(n_species_signi_low_high_wa) / nrow(sp_importance_signi_count) * 100
 
 ```
 

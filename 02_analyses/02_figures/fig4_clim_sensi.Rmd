@@ -28,7 +28,7 @@ library(ggeffects)
 
 ```{r read}
 
-read_data <- function(data_dir){
+read_data <- function(data_dir) {
   fs::dir_ls(data_dir, regexp = "\\.rds$") |>
     purrr::map(read_rds)
 }
