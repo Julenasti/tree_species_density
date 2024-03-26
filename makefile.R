@@ -36,5 +36,5 @@ render(here("02_analyses", "02_figures",
             "fig3_clim_stand.Rmd"), "github_document")
 
 render(here("02_analyses", "02_figures", 
-            "fig4_clim_sensi.Rmd"), "github_document")
+            "si_clim_sensi.Rmd"), "github_document")
 

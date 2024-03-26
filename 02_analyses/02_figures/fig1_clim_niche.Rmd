@@ -1,5 +1,5 @@
 ---
-title: "Quantify changes in species abundance across species climatic niches"
+title: "Quantify changes in species density across species climatic niches"
 output: github_document
 editor_options: 
   chunk_output_type: console
@@ -213,7 +213,7 @@ get_density_climate <- function(dat, sp){
       low = scales::muted("#B2182B"),
       high = scales::muted("#2166AC"),
       name =
-        "Annual change\nn. stems per hectare"
+        "Mean annual\nchange n. stems\nper hectare"
       ) +
     scale_y_continuous(breaks = c(1, 1.666667, 2.333333, 3),
                        labels = c(round(min(dat$aridity), 1),
@@ -878,10 +878,10 @@ gg_region_hist <- function(df, text_mean) {
       breaks = c(5, 0, -5, -10, -15),
       low = scales::muted("#B2182B"),
       high = scales::muted("#2166AC"),
-      name = "Annual change\nn. stems per hectare",
+      name = "Mean annual\nchange n. stems\nper hectare",
     ) + 
     scale_x_continuous(
-      name = "Annual change n. stems per hectare",
+      name = "Mean annual change n. stems per hectare",
       breaks = c(-15, -10, -5, 0, 5, 10)) +
     theme(
       strip.background = element_blank(),
@@ -934,6 +934,13 @@ ggsave(
   filename = here("03_results", "figures", "fig1", "fig1_main.tiff"),
   width = 12, height = 8,
   compression = "lzw",
+  dpi = 1200
+)
+
+ggsave(
+  plot = fig1_main,
+  filename = here("03_results", "figures", "fig1", "fig1_main.png"),
+  width = 12, height = 8,
   dpi = 1200
 )
 

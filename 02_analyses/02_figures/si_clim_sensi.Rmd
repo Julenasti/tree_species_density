@@ -1,0 +1,354 @@
+---
+title: "Quantify the effect of species winter temperature, aridity and traits on species climatic sensitivity"
+output: github_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{=html}
+<style type="text/css">
+pre {
+  font-size: 10px
+}
+</style>
+```
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = T, message = F, warning = F)
+
+library(tidyverse)
+library(here)
+library(fs)
+library(DHARMa)
+library(patchwork)
+# https://strengejacke.github.io/ggeffects/articles/introduction_randomeffects.html
+library(ggeffects)
+
+```
+
+```{r read}
+
+read_data <- function(data_dir) {
+  fs::dir_ls(data_dir, regexp = "\\.rds$") |>
+    purrr::map(read_rds)
+}
+
+all_files <- read_data(data_dir = here("01_data", "species_predictions"))
+
+all_files_dir <- dir_ls(here("01_data", "species_predictions"), regexp = "\\.rds$")
+
+all_files_dir_names <- map(all_files_dir, ~str_extract(.x, "[^/]*$")) |> 
+  map(~str_replace(.x, "_", " ")) |> 
+  map(~str_extract(.x,  "[^_]+")) |>
+  unname()
+
+names(all_files) <- all_files_dir_names
+
+all_files_tb <- map2_df(all_files, names(all_files), \(x, y) mutate(x, species.cor = y))
+
+predictions_all_changes <- all_files_tb
+
+# add more traits
+traits_txt <- map(dir_ls(here("01_data", "traits_data"), regexp = "\\.txt$"),
+    \(x) read.delim(file = x, header = TRUE, sep = "\t", dec = "."))
+
+compute_sp_traits <- function(ls_txt, trait) {
+  trait_distinct <- ls_txt |> 
+    distinct(x, .data[[trait]])
+  
+  trait_species <- trait_distinct |> 
+    group_by(x) |> 
+    summarise(
+      {{ trait }} := mean(.data[[trait]], na.rm = T)
+    ) |> 
+    rename(species.cor = x)
+  
+  return(trait_species)
+}
+
+trait_names <- map_chr(seq_along(traits_txt),
+    \(x) names(traits_txt[[x]])[[4]])
+
+trait_species_mean <- map2(traits_txt, trait_names,
+    \(x, y) compute_sp_traits(ls_txt = x, trait = y))
+
+predictions_all_changes_traits <- map(trait_species_mean,
+    \(x) right_join(x, predictions_all_changes, by = "species.cor"))
+
+unique(predictions_all_changes_traits[[1]]$species.cor[is.na(predictions_all_changes_traits[[1]]$leafNa)])
+
+unique(predictions_all_changes_traits[[2]]$species.cor[is.na(predictions_all_changes_traits[[2]]$P50)])
+
+compute_genus_traits <- function(ls_txt, trait) {
+  ls_txt |> 
+    mutate(genus = str_extract(species.cor,  "[^ ]+")) |> 
+    group_by(genus) |> 
+    mutate(
+      mean_genus = mean(.data[[trait]], na.rm = T),
+      mean_genus = if_else(is.nan(mean_genus), NA, mean_genus),
+      {{ trait }} := if_else(is.na(.data[[trait]]), mean_genus, .data[[trait]])
+    ) |> 
+    ungroup() |> 
+    select(!c(mean_genus, genus))
+}
+
+predictions_all_changes_traits_genus <- map2(predictions_all_changes_traits, trait_names,
+    \(x, y) compute_genus_traits(ls_txt = x, trait = y))
+
+join_by <- names(predictions_all_changes_traits_genus[[1]])[-2]
+
+predictions_all_changes_traits_join <- predictions_all_changes_traits_genus |>
+  reduce(left_join, by = join_by)
+
+unique(predictions_all_changes_traits_join$species.cor[is.na(predictions_all_changes_traits_join$leafNa)])
+
+unique(predictions_all_changes_traits_join$species.cor[is.na(predictions_all_changes_traits_join$P50)])
+
+```
+
+```{r lm_models}
+
+# early stand development
+
+names(predictions_all_changes_traits_join)
+
+predictions_species_climsen_low <- predictions_all_changes_traits_join |>
+  mutate(
+    low.climsen = ((predFE_low_cold_wet - n.plot0) / census.interval / plot.area) - ((predFE_low_warm_arid - n.plot0) / census.interval / plot.area)
+  )
+
+summary(predictions_species_climsen_low$low.climsen)
+summary(predictions_species_climsen_low$bio11.mean)
+summary(predictions_species_climsen_low$aridity.mean)
+summary(predictions_species_climsen_low$mean.seed.dry.mass)
+summary(predictions_species_climsen_low$leafNa)
+summary(predictions_species_climsen_low$P50)
+
+# a lm calculating the mean change per species
+predictions_group_low <- predictions_species_climsen_low |> 
+  group_by(species.cor) |> 
+  summarise(
+    low.climsen.sp = mean(low.climsen, na.rm = T),
+    bio11.sp = mean(bio11.mean, na.rm = T),
+    aridity.sp = mean(aridity.mean, na.rm = T),
+    seed.dry.mass.sp = mean(mean.seed.dry.mass, na.rm = T),
+    leafna.sp = mean(leafNa, na.rm = T),
+    p50.sp = mean(P50, na.rm = T)
+  ) |>
+  mutate(
+    seed.dry.mass.sp.l = log(seed.dry.mass.sp)
+  )
+
+# predictions_group_low <- predictions_group_low |> 
+#   filter(species.cor != "Tsuga heterophylla")
+
+mod_lm_low <- lm(
+  low.climsen.sp ~ bio11.sp + 
+    aridity.sp +
+    seed.dry.mass.sp.l +
+    leafna.sp +
+    p50.sp,
+  data = as.data.frame(predictions_group_low)
+)
+
+summary(mod_lm_low)
+
+simres_low <- simulateResiduals(mod_lm_low)
+x11()
+plotResiduals(simres_low)
+
+
+# late stand development
+
+predictions_species_climsen_high <- predictions_all_changes_traits_join |>
+  mutate(
+    high.climsen = ((predFE_high_cold_wet - n.plot0) / census.interval / plot.area) - ((predFE_high_warm_arid - n.plot0) / census.interval / plot.area)
+  )
+
+summary(predictions_species_climsen_high$high.climsen)
+summary(predictions_species_climsen_high$bio11.mean)
+summary(predictions_species_climsen_high$aridity.mean)
+summary(predictions_species_climsen_high$mean.seed.dry.mass)
+summary(predictions_species_climsen_high$leafNa)
+summary(predictions_species_climsen_high$P50)
+
+# a lm calculating the mean change per species
+predictions_group_high <- predictions_species_climsen_high |> 
+  group_by(species.cor) |> 
+  summarise(
+    high.climsen.sp = mean(high.climsen, na.rm = T),
+    bio11.sp = mean(bio11.mean, na.rm = T),
+    aridity.sp = mean(aridity.mean, na.rm = T),
+    seed.dry.mass.sp = mean(mean.seed.dry.mass, na.rm = T),
+    leafna.sp = mean(leafNa, na.rm = T),
+    p50.sp = mean(P50, na.rm = T)
+  ) |>
+  mutate(
+    seed.dry.mass.sp.l = log(seed.dry.mass.sp)
+  )
+
+mod_lm_high <- lm(
+  high.climsen.sp ~ bio11.sp + 
+    aridity.sp +
+    seed.dry.mass.sp.l +
+    leafna.sp +
+    p50.sp,
+  data = as.data.frame(predictions_group_high)
+)
+
+summary(mod_lm_high)
+
+simres_high <- simulateResiduals(mod_lm_high)
+x11()
+plotResiduals(simres_high)
+
+```
+
+```{r si_clim_sensi}
+
+predict_vars <- function(mod_lm) {
+  
+  predict_tmin <- ggpredict(
+    model = mod_lm, 
+    terms = "bio11.sp",
+    type = "fixed"
+  )
+  
+  predict_aridity <- ggpredict(
+    model = mod_lm, 
+    terms = "aridity.sp",
+    type = "fixed"
+  )
+  
+  predict_sdm <- ggpredict(
+    model = mod_lm, 
+    terms = "seed.dry.mass.sp.l",
+    type = "fixed"
+  )
+  
+  predict_leafna <- ggpredict(
+    model = mod_lm, 
+    terms = "leafna.sp",
+    type = "fixed"
+  )
+  
+  predict_p50 <- ggpredict(
+    model = mod_lm, 
+    terms = "p50.sp",
+    type = "fixed"
+  )
+  
+  return(list(
+    predict_tmin,
+    predict_aridity,
+    predict_sdm,
+    predict_leafna,
+    predict_p50
+  ))
+    
+}
+
+predictions_low <- predict_vars(mod_lm = mod_lm_low)
+
+predictions_high <- predict_vars(mod_lm = mod_lm_high)
+
+summary(predictions_group_low$low.climsen.sp)
+quantile(predictions_group_low$low.climsen.sp, probs = c(.05, .95))
+nrow(predictions_group_low[predictions_group_low$low.climsen.sp < -4 | predictions_group_low$low.climsen.sp > 4, ])
+
+summary(predictions_group_high$high.climsen.sp)
+quantile(predictions_group_high$high.climsen.sp, probs = c(.05, .95))
+nrow(predictions_group_high[predictions_group_high$high.climsen.sp < -4 | predictions_group_high$high.climsen.sp > 4, ])
+
+plot_ggeffects_lm <- function(pred, xlab){
+  plot(
+    pred, add.data = T,
+    alpha = .15,
+    jitter = NULL
+    ) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "grey20") +
+    labs(
+      y = expression(atop("Climatic sensitivity (Cold & wet - Warm & arid)", "Mean annual change n. stems per hectare")),
+      x = xlab,
+      ) +
+    coord_cartesian(ylim = c(-4, 4)) +
+    theme(
+      panel.grid.major = element_line(colour = "grey90", linewidth = 0.5),
+      panel.background = element_blank(),
+      axis.text = element_text(size = 10, colour = "black"),
+      axis.title = element_text(size = 10, colour = "black"),
+      legend.position = "none"
+    ) +
+  ggtitle("")
+}
+
+xlab_vec <- c(
+  "Mean winter temperature\nniche position (ºC)",
+  "Aridity niche position (aridity index)",
+  "log(seed dry mass)",
+  bquote("N mass per unit leaf area "(mg/cm^2)),
+  "Xylem water potential at\n50% loss of conductivity (MPa)" 
+)
+
+predictions_low_plot <- map2(predictions_low, xlab_vec, \(x, y)
+     plot_ggeffects_lm(x, y))
+
+predictions_high_plot <- map2(predictions_high, xlab_vec, \(x, y)
+     plot_ggeffects_lm(x, y))
+    
+# si
+fig_si_low <- predictions_low_plot[[1]] + 
+  predictions_low_plot[[2]] + 
+  theme(
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+  ) +
+  predictions_low_plot[[5]] + 
+  predictions_low_plot[[3]] + 
+  theme(
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+  ) +
+  predictions_low_plot[[4]] + 
+  plot_annotation(tag_levels = "A", tag_prefix = "(", tag_suffix = ")") +
+  plot_layout(nrow = 3)
+
+fig_si_high <- predictions_high_plot[[1]] + 
+  predictions_high_plot[[2]] + 
+  theme(
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+  ) +
+  predictions_high_plot[[5]] + 
+  predictions_high_plot[[3]] + 
+  theme(
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+  ) +
+  predictions_high_plot[[4]] + 
+  plot_annotation(tag_levels = "A", tag_prefix = "(", tag_suffix = ")") +
+  plot_layout(nrow = 3)
+
+fig_si_low
+
+ggsave(
+  plot = fig_si_low,
+  here("03_results", "figures", "si_clim_sensi", "fig_si_low.png"),
+  width = 9, height = 10,
+  dpi = 600
+)
+
+fig_si_high
+
+ggsave(
+  plot = fig_si_high,
+  here("03_results", "figures", "si_clim_sensi", "fig_si_high.png"),
+  width = 9, height = 10,
+  dpi = 600
+)
+
+```

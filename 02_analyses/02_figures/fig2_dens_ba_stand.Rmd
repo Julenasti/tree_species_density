@@ -1,5 +1,5 @@
 ---
-title: "Quantify the relationship between changes in species abundance and mean tree size adjusting for stand development"
+title: "Quantify the relationship between changes in species density and mean tree size adjusting for stand development"
 output: github_document
 editor_options: 
   chunk_output_type: console
@@ -45,24 +45,6 @@ summary(data_model_chan$mean.ba.ind_changes)
 
 ```{r group_species}
 
-species_ba_changes <- data_model_chan |> 
-  group_by(species.cor) |> 
-  summarise(
-    mean_sp_mean_ba_ind0 = mean(
-      mean.ba.ind0, na.rm = T
-      ),
-    mean_sp_mean_ba_ind = mean(
-      mean.ba.ind, na.rm = T
-      ),
-    mean_sp_mean_ba_ind_changes = mean(
-      mean.ba.ind_changes, na.rm = T
-      ),
-    mean_sp_n_plot_changes = mean(
-      n.plot_changes, na.rm = T
-      ),
-    region = first(region)
-  )
-
 nrow(data_model_chan)
 
 # filter datasets
@@ -88,7 +70,6 @@ data_ls <- list(
   data_model_chan_early,
   data_model_chan_mid,
   data_model_chan_late
-  
 )
 
 names_stand_v <- c(
@@ -252,10 +233,10 @@ fig2_main <- ggplot(
                   force = 1,
                   box.padding = .2) +
   scale_y_continuous(
-    name = (bquote("Annual change mean tree basal area  "(cm^2)))
+    name = (bquote("Mean annual change mean tree basal area  "(cm^2)))
   ) +
   scale_x_continuous(
-    name = "Annual change n. stems per hectare",
+    name = "Mean annual change n. stems per hectare",
   ) +
   facet_grid(. ~ factor(
     stand_dev, levels = c(
@@ -269,9 +250,10 @@ fig2_main <- ggplot(
   theme(
     panel.grid.major = element_line(colour = "grey90", linewidth = 0.5),
     panel.background = element_blank(),
-    axis.text = element_text(size = 10, colour = "black"),
+    axis.text = element_text(size = 8, colour = "black"),
     legend.position = "none",
-    axis.title = element_text(size = 10, colour = "black"),
+    axis.title = element_text(size = 9, colour = "black"),
+    strip.text = element_text(size = 9, colour = "black")
   )
 
 fig2_main
@@ -281,6 +263,13 @@ ggsave(
   filename = here("03_results", "figures", "fig2", "fig2_main.tiff"),
   width = 8, height = 4,
   compression = "lzw",
+  dpi = 1200
+)
+
+ggsave(
+  plot = fig2_main,
+  filename = here("03_results", "figures", "fig2", "fig2_main.png"),
+  width = 8, height = 4,
   dpi = 1200
 )
 
