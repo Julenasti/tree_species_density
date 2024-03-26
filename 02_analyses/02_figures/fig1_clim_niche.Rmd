@@ -630,7 +630,7 @@ data_region <- data_model_chan_region |>
   select(species.cor, climatic_region) |> 
   unnest(climatic_region)
 
-table(data_region$cell, data_region$species.cor)
+# table(data_region$cell, data_region$species.cor)
 
 # fit a model for each climatic region
 data_region_mixed <- data_region |>  
